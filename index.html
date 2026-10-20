@@ -1,0 +1,1312 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>웹캠 사물 인식 실습</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* 레이아웃: 위쪽 단계 표시줄 + 단계별 카드가 세로로 이어지는 한 페이지 */
+:root{
+  --bg:#f5f7f8; --surface:#ffffff; --line:#d9e0e3; --fg:#1b2428; --muted:#5d6b71;
+  --accent:#0b7a75; --accent-soft:#e1f2f0; --warn:#b4570b; --warn-soft:#fdf0e3; --bad:#b3261e;
+  --c0:#0b7a75; --c1:#c2620c; --c2:#5b5fc7; --c3:#b0306a; --c4:#4f7d1c; --paper:#fbfaf7; --tip:#cfc6b4;
+  --font:"Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo",system-ui,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+  --r:10px;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#12181a; --surface:#1a2225; --line:#2c383c; --fg:#e6eef0; --muted:#9aaab0;
+  --accent:#3fb8b0; --accent-soft:#163331; --warn:#f0a35a; --warn-soft:#3a2a18; --bad:#f28b82;
+  --c0:#3fb8b0; --c1:#f0a35a; --c2:#9a9df0; --c3:#ec7fb0; --c4:#9ccc65; --paper:#222c30; --tip:#8a8170; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#12181a; --surface:#1a2225; --line:#2c383c; --fg:#e6eef0; --muted:#9aaab0;
+  --accent:#3fb8b0; --accent-soft:#163331; --warn:#f0a35a; --warn-soft:#3a2a18; --bad:#f28b82;
+  --c0:#3fb8b0; --c1:#f0a35a; --c2:#9a9df0; --c3:#ec7fb0; --c4:#9ccc65; --paper:#222c30; --tip:#8a8170; color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0}
+body{background:var(--bg);color:var(--fg);font:16px/1.6 var(--font);word-break:keep-all;overflow-wrap:anywhere;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0 48px}
+.wrap{max-width:1040px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
+h1{font-size:1.5rem;margin:0;text-wrap:balance}
+h2{font-size:1.2rem;margin:0;display:flex;align-items:center;gap:10px}
+h2 .no{font-family:var(--mono);font-size:.85rem;background:var(--accent);color:var(--surface);border-radius:6px;padding:1px 8px}
+p{margin:0}
+.muted{color:var(--muted)}
+header.top{position:sticky;top:0;z-index:5;background:var(--bg);padding-block:16px 12px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:10px}
+.steps{display:flex;flex-wrap:wrap;gap:6px;list-style:none;margin:0;padding:0;font-size:.9rem}
+.steps li{padding:4px 12px;border-radius:999px;border:1px solid var(--line);color:var(--muted);background:var(--surface)}
+.steps li.on{border-color:var(--accent);color:var(--accent);font-weight:700}
+.steps li.done{background:var(--accent-soft);color:var(--accent);border-color:transparent}
+.status{font-size:.9rem;padding:8px 12px;border-radius:8px;background:var(--surface);border:1px solid var(--line)}
+.status.ok{border-color:var(--accent);color:var(--accent)}
+.status.err{border-color:var(--bad);color:var(--bad)}
+section.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:20px;display:flex;flex-direction:column;gap:16px}
+section.card[aria-disabled="true"]{opacity:.55}
+button{font:inherit;cursor:pointer;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--fg);padding:8px 14px}
+button:hover:not(:disabled){border-color:var(--accent)}
+button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+button:disabled{cursor:not-allowed;opacity:.5}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--surface);font-weight:700}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+input[type=text]{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);min-width:0}
+/* 이름 정하기 */
+.classes{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.cname{display:flex;gap:6px;align-items:center}
+.cname .dot{width:12px;height:12px;border-radius:50%;flex:none}
+.cname input{flex:1}
+/* 촬영 */
+.capture{display:grid;grid-template-columns:minmax(0,340px) minmax(0,1fr);gap:20px;align-items:start}
+@media (max-width:760px){.capture{grid-template-columns:minmax(0,1fr)}}
+.cam{position:relative;aspect-ratio:1;max-width:100%;background:#000;border-radius:var(--r);overflow:hidden}
+.cam video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1);display:block}
+.cam .msg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:20px;color:#fff;font-size:.95rem;background:rgba(0,0,0,.6)}
+.cam .flash{position:absolute;inset:0;border:6px solid transparent;pointer-events:none}
+.cam .flash.on{border-color:var(--accent)}
+.tip{font-size:.9rem;background:var(--accent-soft);border-radius:8px;padding:8px 12px}
+.bins{display:flex;flex-direction:column;gap:12px}
+.bin{border:1px solid var(--line);border-radius:var(--r);padding:12px;display:flex;flex-direction:column;gap:8px}
+.bin-head{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.bin-head b{display:flex;align-items:center;gap:6px}
+.count{font-family:var(--mono);font-size:.9rem;font-variant-numeric:tabular-nums}
+.bar{height:6px;background:var(--line);border-radius:3px;overflow:hidden}
+.bar i{display:block;height:100%;width:0;transition:width .15s}
+.thumbs{display:flex;flex-wrap:wrap;gap:4px;max-height:132px;overflow-y:auto}
+.thumbs img{width:40px;height:40px;object-fit:cover;border-radius:4px;cursor:pointer}
+.thumbs img:hover{outline:2px solid var(--bad)}
+.hold{user-select:none;-webkit-user-select:none;touch-action:none}
+.hold.active{background:var(--accent);color:var(--surface);border-color:var(--accent)}
+.upl{font-size:.9rem;position:relative;display:inline-flex;align-items:center;border:1px dashed var(--line);border-radius:8px;padding:8px 14px;cursor:pointer}
+.upl:hover{border-color:var(--accent)}
+.upl:focus-within{outline:3px solid var(--accent);outline-offset:2px}
+.upl input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%}
+/* 학습 */
+.charts{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+.chart{border:1px solid var(--line);border-radius:var(--r);padding:12px}
+.chart h3{margin:0 0 6px;font-size:.95rem}
+.chart canvas{width:100%;height:160px;display:block}
+details{font-size:.95rem}
+details .row{margin-top:10px}
+select{font:inherit;padding:6px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--fg)}
+.result{font-size:1rem;padding:10px 12px;border-radius:8px;background:var(--accent-soft)}
+/* 예측 */
+.predict{display:grid;grid-template-columns:minmax(0,340px) minmax(0,1fr);gap:20px;align-items:start}
+@media (max-width:760px){.predict{grid-template-columns:minmax(0,1fr)}}
+.top-label{font-size:2rem;font-weight:700;line-height:1.2}
+.probs{display:flex;flex-direction:column;gap:10px}
+.prob{display:grid;grid-template-columns:7em minmax(0,1fr) 4em;gap:10px;align-items:center}
+.prob .track{height:22px;background:var(--line);border-radius:6px;overflow:hidden}
+.prob .fill{height:100%;width:0;transition:width .2s}
+.prob .pct{font-family:var(--mono);text-align:right;font-variant-numeric:tabular-nums}
+.snap{width:100%;aspect-ratio:1;border-radius:var(--r);object-fit:cover;background:var(--line)}
+.tabs{display:flex;gap:6px}
+.tabs button[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:700}
+/* 안내 */
+.guide-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+@media (max-width:700px){.guide-grid{grid-template-columns:minmax(0,1fr)}}
+.guide-grid > div{border:1px solid var(--line);border-radius:var(--r);padding:16px;display:flex;flex-direction:column;gap:8px}
+.guide-grid h3{margin:0;font-size:1rem;color:var(--accent)}
+.guide-grid ol{margin:0;padding-left:1.3em;display:flex;flex-direction:column;gap:4px}
+.flow li span{font-family:var(--mono);font-size:.85rem;color:var(--muted);margin-left:6px}
+button.big{font-size:1.05rem;padding:12px 20px;align-self:flex-start}
+.head-row{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.head-row button{font-size:.85rem;padding:4px 12px}
+/* 미션 */
+.missions{border-top:1px solid var(--line);padding-top:16px;display:flex;flex-direction:column;gap:12px}
+.missions h3{margin:0;font-size:1.05rem}
+.mgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}
+.mission{border:1px solid var(--line);border-radius:var(--r);padding:14px;display:flex;flex-direction:column;gap:8px;font-size:.95rem}
+.mission.done{border-color:var(--accent);background:var(--accent-soft)}
+.mission h4{margin:0;font-size:1rem}
+.mission .k{display:block;font-size:.8rem;color:var(--muted);letter-spacing:.02em}
+.mission .concept{font-size:.85rem;color:var(--accent);font-weight:500;margin-top:auto}
+.mission label{display:flex;gap:6px;align-items:center;font-size:.9rem;cursor:pointer}
+.mission .row button{font-size:.85rem;padding:6px 10px}
+/* 상단 막대 */
+.appbar{max-width:1040px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;gap:8px 16px;flex-wrap:wrap;padding-block:12px;border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:8px;font-weight:700;border:none;background:none;padding:4px 0;font-size:1rem}
+.brand .mk{font-family:var(--mono);font-size:.8rem;color:var(--surface);background:var(--accent);border-radius:6px;padding:1px 7px}
+.nav{display:flex;gap:2px}
+.nav button{border:none;background:none;border-radius:0;padding:6px 12px;color:var(--muted)}
+.nav button[aria-current="page"]{color:var(--accent);font-weight:700;box-shadow:inset 0 -2px 0 var(--accent)}
+.chip{font-size:.8rem;border-radius:999px;padding:3px 10px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+.chip.ok{border-color:var(--accent);color:var(--accent)}
+.chip.err{border-color:var(--bad);color:var(--bad)}
+/* 홈 */
+.home{padding-block:36px 24px;display:flex;flex-direction:column;gap:28px}
+.hero{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:32px;align-items:center}
+@media (max-width:760px){.hero{grid-template-columns:minmax(0,1fr)}}
+.hero-text{display:flex;flex-direction:column;gap:14px}
+.eyebrow{font-family:var(--mono);font-size:.85rem;color:var(--accent);letter-spacing:.06em}
+.home h1{font-size:2.1rem;line-height:1.3;text-wrap:balance}
+.home .lead{font-size:1.1rem;color:var(--muted);max-width:34em}
+.hero-flow{width:100%;height:auto;display:block;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px;font-family:var(--font)}
+.hero-flow .t{font-size:16px;font-weight:700;fill:var(--fg)}
+.hero-flow .s{font-size:14px;fill:var(--muted)}
+.hero-flow .tag{font-size:13px;font-weight:700;fill:var(--surface)}
+.choices{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+@media (max-width:640px){.choices{grid-template-columns:minmax(0,1fr)}}
+.choice{display:flex;flex-direction:column;align-items:flex-start;gap:8px;text-align:left;padding:22px 24px;border-radius:14px;border:1.5px solid var(--line);background:var(--surface)}
+.choice:hover{border-color:var(--accent)}
+.choice .k{font-family:var(--mono);font-size:.85rem;color:var(--accent);display:flex;gap:8px;align-items:center}
+.choice b{font-size:1.4rem}
+.choice span.d{color:var(--muted)}
+.choice.main{border-color:var(--accent);background:var(--accent-soft)}
+.badge{font-family:var(--font);font-size:.8rem;font-weight:700;background:var(--accent);color:var(--surface);border-radius:999px;padding:1px 9px}
+.prep{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+@media (max-width:640px){.prep{grid-template-columns:minmax(0,1fr)}}
+.prep section{border-top:2px solid var(--line);padding-top:12px;display:flex;flex-direction:column;gap:8px}
+.prep h2{font-size:1rem}
+.prep ul{margin:0;padding-left:1.2em;display:flex;flex-direction:column;gap:4px;color:var(--fg)}
+/* 이론 */
+.th-top{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding-block:16px 4px}
+.th-top h1{font-size:1.3rem}
+.th-no{font-family:var(--mono);font-size:.9rem;color:var(--accent)}
+.stage{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px;overflow:hidden}
+svg.scene{width:100%;height:auto;display:block;font-family:var(--font)}
+.scene .t-h{font-size:18px;font-weight:700;fill:var(--fg)}
+.scene .t-b{font-size:16px;font-weight:700;fill:var(--fg)}
+.scene .t-m{font-size:15px;fill:var(--fg)}
+.scene .t-s{font-size:12.5px;fill:var(--muted)}
+.scene .t-code{font-family:var(--mono);font-size:16px;fill:var(--fg)}
+.scene .t-tag{font-size:12px;font-weight:700;fill:var(--surface)}
+.scene .mono{font-family:var(--mono)}
+.scene .strong{font-weight:700}
+.scene .ok{fill:var(--accent)} .scene .bad{fill:var(--bad)}
+.scene .mv{transform-box:fill-box;transform-origin:center}
+.th-caption{font-size:1.2rem;font-weight:500;line-height:1.6;max-width:46em;text-wrap:pretty}
+.th-term{display:flex;flex-direction:column;gap:4px;border-left:3px solid var(--accent);padding:4px 0 4px 12px;max-width:46em}
+.th-term .k{font-size:.8rem;color:var(--muted);letter-spacing:.04em}
+.th-term p{font-size:1rem}
+.s2-legend{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:.8rem;color:var(--muted);width:100%;max-width:360px}
+.s2-legend i{flex:1;height:10px;border-radius:5px;background:linear-gradient(90deg,#000,#fff);border:1px solid var(--line)}
+.s2-pick button{font-size:.85rem;padding:4px 10px}
+.s2-pick button[aria-pressed="true"]{border-color:var(--accent);color:var(--accent);font-weight:700}
+.sum-list{margin:0;padding-left:1.3em;display:flex;flex-direction:column;gap:10px;font-size:1.05rem}
+.sum-list .to{display:inline-block;margin-left:6px;font-size:.85rem;color:var(--accent);background:var(--accent-soft);border-radius:6px;padding:0 8px}
+.th-link{font-size:.95rem;color:var(--accent);background:var(--accent-soft);border-radius:8px;padding:6px 12px;align-self:flex-start}
+.th-ctrl{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.dots{display:flex;gap:8px}
+.dot{width:14px;height:14px;padding:0;border-radius:50%;background:var(--line);border:none}
+.dot[aria-current="step"]{background:var(--accent);transform:scale(1.2)}
+.s2{display:grid;grid-template-columns:minmax(0,360px) minmax(0,1fr);gap:24px;align-items:center;padding:8px}
+@media (max-width:700px){.s2{grid-template-columns:minmax(0,1fr)}}
+.s2-left{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.s2-left canvas{width:100%;max-width:360px;aspect-ratio:1;border-radius:8px;image-rendering:pixelated}
+.s2-label{font-family:var(--mono);font-size:.9rem;color:var(--accent)}
+.s2-info{display:flex;flex-direction:column;gap:12px;margin:0;padding-left:1.3em;font-size:1.05rem}
+.th-intro ol{margin:0;padding-left:1.3em;columns:2;column-gap:32px}
+@media (max-width:640px){.th-intro ol{columns:1}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<nav class="appbar" aria-label="화면 이동">
+  <button type="button" class="brand" data-home><span class="mk">AI 실습 1</span>웹캠 사물 인식</button>
+  <div class="nav"><button type="button" data-nav="home" aria-current="page">처음</button><button type="button" data-nav="theory">이론</button><button type="button" data-nav="lab">실습</button></div>
+  <span class="chip" id="homeStatus" role="status">AI 준비 중…</span>
+</nav>
+
+<div class="wrap home" id="view-home">
+  <div class="hero">
+    <div class="hero-text">
+      <p class="eyebrow">고등학생 인공지능 실습</p>
+      <h1>웹캠으로 사물 인식 AI 만들기</h1>
+      <p class="lead">내 노트북 카메라로 펜과 지우개를 찍고, 그 사진으로 AI를 학습시켜 직접 사물을 맞혀 봅니다.</p>
+    </div>
+    <svg class="hero-flow" viewBox="0 0 600 190" role="img" aria-label="데이터 모으기, 학습, 예측의 세 단계">
+      <defs><marker id="hah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--muted)"/></marker></defs>
+      <rect x="40" y="34" width="96" height="76" rx="8" fill="var(--paper)" stroke="var(--line)"/>
+      <rect x="30" y="44" width="96" height="76" rx="8" fill="var(--paper)" stroke="var(--line)"/>
+      <rect x="20" y="54" width="96" height="76" rx="8" fill="var(--paper)" stroke="var(--line)"/>
+      <g transform="translate(68,90) rotate(-18) scale(.8)"><rect x="-44" y="-7" width="11" height="14" rx="3" fill="var(--fg)" opacity=".75"/><rect x="-36" y="-6" width="64" height="12" rx="3" fill="var(--c0)"/><polygon points="28,-6 42,0 28,6" fill="var(--tip)"/></g>
+      <rect x="20" y="130" width="96" height="20" rx="5" fill="var(--accent)"/><text x="68" y="144" text-anchor="middle" class="tag">펜</text>
+      <line x1="150" y1="92" x2="200" y2="92" stroke="var(--muted)" stroke-width="2" marker-end="url(#hah)"/>
+      <g stroke="var(--accent)" stroke-width="1" opacity=".55">
+        <line x1="230" y1="62" x2="300" y2="50"/><line x1="230" y1="62" x2="300" y2="80"/><line x1="230" y1="62" x2="300" y2="110"/><line x1="230" y1="62" x2="300" y2="140"/>
+        <line x1="230" y1="92" x2="300" y2="50"/><line x1="230" y1="92" x2="300" y2="80"/><line x1="230" y1="92" x2="300" y2="110"/><line x1="230" y1="92" x2="300" y2="140"/>
+        <line x1="230" y1="122" x2="300" y2="50"/><line x1="230" y1="122" x2="300" y2="80"/><line x1="230" y1="122" x2="300" y2="110"/><line x1="230" y1="122" x2="300" y2="140"/>
+        <line x1="300" y1="50" x2="370" y2="75"/><line x1="300" y1="80" x2="370" y2="75"/><line x1="300" y1="110" x2="370" y2="75"/><line x1="300" y1="140" x2="370" y2="75"/>
+        <line x1="300" y1="50" x2="370" y2="110"/><line x1="300" y1="80" x2="370" y2="110"/><line x1="300" y1="110" x2="370" y2="110"/><line x1="300" y1="140" x2="370" y2="110"/>
+      </g>
+      <g fill="var(--surface)" stroke="var(--accent)" stroke-width="2"><circle cx="230" cy="62" r="7"/><circle cx="230" cy="92" r="7"/><circle cx="230" cy="122" r="7"/><circle cx="300" cy="50" r="7"/><circle cx="300" cy="80" r="7"/><circle cx="300" cy="110" r="7"/><circle cx="300" cy="140" r="7"/><circle cx="370" cy="75" r="7"/><circle cx="370" cy="110" r="7"/></g>
+      <line x1="400" y1="92" x2="440" y2="92" stroke="var(--muted)" stroke-width="2" marker-end="url(#hah)"/>
+      <rect x="455" y="40" width="54" height="44" rx="6" fill="var(--paper)" stroke="var(--line)"/>
+      <g transform="translate(482,62) rotate(-18) scale(.45)"><rect x="-38" y="-6" width="60" height="12" rx="3" fill="var(--c4)"/><rect x="14" y="-8" width="30" height="16" rx="7" fill="var(--fg)" opacity=".8"/></g>
+      <text x="516" y="67" class="s">새 사진</text>
+      <text x="440" y="114" class="s">펜</text><rect x="500" y="104" width="88" height="12" rx="3" fill="var(--line)"/><rect x="500" y="104" width="80" height="12" rx="3" fill="var(--c0)"/>
+      <text x="440" y="139" class="s">지우개</text><rect x="500" y="129" width="88" height="12" rx="3" fill="var(--line)"/><rect x="500" y="129" width="6" height="12" rx="3" fill="var(--c2)"/>
+      <text x="68" y="180" text-anchor="middle" class="t">① 데이터 모으기</text>
+      <text x="300" y="180" text-anchor="middle" class="t">② 학습</text>
+      <text x="518" y="180" text-anchor="middle" class="t">③ 예측</text>
+    </svg>
+  </div>
+  <div class="choices">
+    <button type="button" class="choice main" id="goTheory"><span class="k">1단계 · 6~8분 <span class="badge" id="theoryDone" hidden>다 봤어요</span></span><b>이론</b><span class="d">움직이는 그림 7장면으로 AI가 배우고 예측하는 큰 그림을 봅니다.</span></button>
+    <button type="button" class="choice" id="goLab"><span class="k">2단계 · 약 45분</span><b>실습</b><span class="d">사진을 찍고, 학습시키고, 내가 만든 AI로 예측해 봅니다.</span></button>
+  </div>
+  <div class="prep">
+    <section><h2>준비물</h2><ul>
+      <li>웹캠이 있는 노트북 (Chrome 또는 Edge 브라우저)</li>
+      <li>책상 위 사물 2~3개: 펜, 지우개, 자 등</li>
+      <li>인터넷 연결 (AI 모델을 처음 한 번 내려받습니다)</li></ul></section>
+    <section><h2>알아 둘 점</h2><ul>
+      <li>사진은 내 노트북 브라우저 안에서만 처리되고, 다른 곳으로 보내지 않습니다.</li>
+      <li>창을 닫거나 새로고침하면 찍은 사진과 학습한 AI가 사라집니다.</li>
+      <li>처음이라면 이론부터 보는 것을 권합니다.</li></ul></section>
+  </div>
+</div>
+
+<div class="wrap" id="view-theory" hidden>
+  <div class="th-top"><h1>이론: AI는 어떻게 배우고 예측할까</h1></div>
+  <section class="card th-intro" id="thIntro">
+    <h2><span class="no">0</span>이 이론에서 볼 것</h2>
+    <p>실습에서 누르는 버튼 하나하나가 AI 안에서 무슨 일을 하는지 알고 나면, 결과가 왜 그렇게 나왔는지 스스로 설명할 수 있습니다.</p>
+    <ol>
+      <li>AI는 예시로 배운다</li><li>컴퓨터가 보는 사진</li><li>전체 흐름 한눈에</li><li>신경망 안을 들여다보기</li>
+      <li>학습은 틀린 만큼 고치는 것</li><li>미리 배운 AI 빌려 쓰기</li><li>예측은 확률이다</li>
+    </ol>
+    <p class="muted">장면마다 그림이 자동으로 움직이고, 처음 나오는 용어는 그림 아래에 뜻을 적어 두었습니다. 7장면과 정리, 6~8분 걸립니다. 키보드 ← → 로도 넘길 수 있습니다.</p>
+    <button type="button" class="primary big" id="thStart">이론 시작하기</button>
+  </section>
+  <div id="thPlayer" hidden style="display:flex;flex-direction:column;gap:14px">
+    <div><div class="th-no" id="thNo"></div><h2 id="thTitle" style="font-size:1.5rem"></h2></div>
+    <div class="stage" id="stage"></div>
+    <p class="th-caption" id="thCaption"></p>
+    <div class="th-term" id="thTerm" hidden></div>
+    <p class="th-link" id="thLink"></p>
+    <div class="th-ctrl">
+      <div class="row"><button type="button" id="thPrev">← 이전</button><button type="button" id="thReplay">다시 보기</button></div>
+      <div class="dots" id="dots"></div>
+      <div class="row"><button type="button" class="primary" id="thNext">다음 →</button></div>
+    </div>
+  </div>
+  <section class="card" id="thSummary" hidden>
+    <h2>정리: 오늘 이론에서 본 것</h2>
+    <ol class="sum-list">
+      <li>AI는 정답(이름표)이 붙은 예시, 즉 데이터로 배운다.<span class="to">실습 ② 촬영</span></li>
+      <li>컴퓨터는 사진을 숫자로 보고, 신경망이 그 숫자에서 무늬와 모양 같은 특징을 찾는다.<span class="to">실습 ③ 학습</span></li>
+      <li>학습은 예측 → 정답과 비교 → 오차 계산 → 연결 강도 고치기를 반복하는 것이다. 미리 학습된 AI를 빌려 쓰면 몇십 초면 끝난다.<span class="to">실습 ③ 학습</span></li>
+      <li>예측은 확률이다. 헷갈리는 사진이면 확률이 여러 답으로 나뉜다.<span class="to">실습 ④ 예측</span></li>
+    </ol>
+    <p class="muted">실습에서 위 네 가지를 직접 확인해 봅니다.</p>
+    <div class="row"><button type="button" id="sumBack">← 장면 7로</button><button type="button" class="primary big" id="thToLab">실습하러 가기 →</button></div>
+  </section>
+</div>
+
+<div class="wrap" id="view-lab" hidden>
+  <header class="top">
+    <div class="head-row"><h1>웹캠으로 사물 인식 AI 만들기</h1><div class="row"><button type="button" id="guideAgain" hidden>안내 다시 보기</button></div></div>
+    <ol class="steps" id="steps">
+      <li data-s="0">안내</li><li data-s="1">이름 정하기</li><li data-s="2">촬영</li><li data-s="3">학습</li><li data-s="4">예측</li>
+    </ol>
+    <div class="status" id="status" role="status">AI를 준비하고 있습니다. 처음 한 번은 10~30초 걸립니다.</div>
+  </header>
+
+  <!-- 0. 실습 안내 (모든 실습 필수) -->
+  <section class="card" id="sec0">
+    <h2><span class="no">0</span>실습을 시작하기 전에</h2>
+    <div class="guide-grid">
+      <div><h3>이 실습을 왜 하나요</h3><p>스마트폰 사진첩의 자동 분류나 무인 계산대도 '사진을 모아 학습하고 예측하는' 방식으로 만들어집니다. 오늘은 그 과정을 내 노트북에서 직접 해 봅니다.</p></div>
+      <div><h3>이 실습에서 배우는 것</h3><ol>
+        <li>AI는 사진과 정답(이름표)으로 배운다.</li>
+        <li>학습과 예측은 서로 다른 단계다.</li>
+        <li>컴퓨터는 사진을 숫자로 보고, 그 숫자에서 특징을 찾는다.</li>
+        <li>예측은 확률이고, 데이터의 양과 다양성에 따라 결과가 달라진다.</li></ol></div>
+      <div><h3>진행 순서와 시간</h3><ol class="flow">
+        <li>이름 정하기<span>2분</span></li><li>촬영<span>10분</span></li><li>학습<span>3분</span></li><li>예측과 실험 미션<span>25분</span></li></ol></div>
+      <div><h3>알아 둘 점</h3><p>찍은 사진은 이 노트북 브라우저 안에만 있고, 창을 닫으면 사라집니다. 얼굴이 나오지 않게 사물만 찍어 주세요.</p><p class="muted">시작하면 카메라 권한을 묻습니다. '허용'을 눌러 주세요.</p></div>
+    </div>
+    <button type="button" class="primary big" id="startBtn">확인했어요, 실습 시작하기</button>
+  </section>
+
+  <div id="labBody" hidden style="display:flex;flex-direction:column;gap:20px">
+  <!-- 1. 이름 정하기 -->
+  <section class="card" id="sec1">
+    <h2><span class="no">1</span>이름 정하기</h2>
+    <p class="muted">AI가 구분할 사물의 이름입니다. 이름을 바꾸거나 최대 5개까지 늘릴 수 있습니다. '아무것도 없음'은 빈 화면에서 AI가 억지로 사물을 고르지 않게 하려고 넣었습니다.</p>
+    <div class="classes" id="classList"></div>
+    <div class="row">
+      <button id="addClass" type="button">+ 사물 추가</button>
+      <span class="muted" id="classHint"></span>
+    </div>
+  </section>
+
+  <!-- 2. 촬영 -->
+  <section class="card" id="sec2">
+    <h2><span class="no">2</span>촬영 (데이터 모으기)</h2>
+    <div class="capture">
+      <div class="cam" id="cam1">
+        <video id="video" autoplay playsinline muted></video>
+        <div class="flash" id="flash"></div>
+        <div class="msg" id="camMsg">카메라를 켜는 중입니다. 주소창에 권한 요청이 뜨면 '허용'을 눌러 주세요.</div>
+      </div>
+      <div class="bins">
+        <p class="tip" id="tip">버튼을 <b>누르고 있으면</b> 1초에 약 10장씩 찍힙니다. 사물마다 30~50장을 권장합니다. 각도를 돌리고, 가까이·멀리 찍어 보세요.</p>
+        <div id="binList" class="bins"></div>
+        <p class="muted" style="font-size:.85rem">사진을 누르면 그 사진만 지워집니다. 사진은 이 노트북 브라우저 안에만 있고, 창을 닫으면 사라집니다.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3. 학습 -->
+  <section class="card" id="sec3" aria-disabled="true">
+    <h2><span class="no">3</span>학습</h2>
+    <p class="muted" id="trainHint">사물마다 사진이 10장 이상이면 학습할 수 있습니다.</p>
+    <div class="row">
+      <button class="primary" id="trainBtn" type="button" disabled>학습 시작</button>
+      <span id="trainProg" class="count"></span>
+    </div>
+    <details>
+      <summary>고급 설정</summary>
+      <div class="row">
+        <label for="epochs">에폭(반복 횟수)</label>
+        <select id="epochs"><option>10</option><option selected>20</option><option>30</option><option>50</option></select>
+        <label for="lr">학습률</label>
+        <select id="lr"><option value="0.01">0.01 (크게 고침)</option><option value="0.001" selected>0.001 (기본)</option><option value="0.0001">0.0001 (조금씩 고침)</option></select>
+      </div>
+    </details>
+    <div class="charts">
+      <div class="chart"><h3>오차 (낮을수록 좋음)</h3><canvas id="lossChart" width="480" height="160" aria-label="에폭별 오차 그래프"></canvas></div>
+      <div class="chart"><h3>정확도 (높을수록 좋음)</h3><canvas id="accChart" width="480" height="160" aria-label="에폭별 정확도 그래프"></canvas></div>
+    </div>
+    <p class="result" id="trainResult" hidden></p>
+  </section>
+
+  <!-- 4. 예측 -->
+  <section class="card" id="sec4" aria-disabled="true">
+    <h2><span class="no">4</span>예측</h2>
+    <div class="tabs" role="group" aria-label="예측 방식">
+      <button type="button" id="modeLive" aria-pressed="true">실시간</button>
+      <button type="button" id="modePhoto" aria-pressed="false">사진 한 장</button>
+    </div>
+    <div class="predict">
+      <div>
+        <div class="cam" id="liveBox"><video id="video2" autoplay playsinline muted></video><div class="msg" id="liveMsg">학습을 마치면 실시간 예측이 시작됩니다.</div></div>
+        <div id="photoBox" hidden>
+          <img class="snap" id="snapImg" alt="예측에 쓴 사진">
+          <div class="row" style="margin-top:10px">
+            <button type="button" id="snapBtn" class="primary">지금 찍어서 예측</button>
+            <label class="upl">파일로 예측<input type="file" id="snapFile" accept="image/*"></label>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <p class="muted">AI의 답</p>
+        <div class="top-label" id="topLabel">-</div>
+        <div class="probs" id="probs"></div>
+        <button type="button" id="moreBtn">사진 더 찍고 다시 학습하기</button>
+      </div>
+    </div>
+    <div class="missions">
+      <h3>실험 미션</h3>
+      <p class="muted">미션을 해 보고, 질문에 대한 생각을 짝과 이야기해 보세요. 끝낸 미션은 '해 봤어요'에 표시합니다.</p>
+      <div class="mgrid">
+        <article class="mission" id="m1">
+          <h4>AI 속이기</h4>
+          <p><span class="k">할 일</span>펜과 비슷한 물건(샤프, 나무젓가락 등)을 카메라에 비춰 봅니다.</p>
+          <p><span class="k">생각해 볼 질문</span>AI는 무엇이라고 답했나요? 왜 그렇게 답했을까요?</p>
+          <p class="concept">AI는 배운 것 안에서만 답한다</p>
+          <label><input type="checkbox" id="mc1"> 해 봤어요</label>
+        </article>
+        <article class="mission" id="m2">
+          <h4>배경 바꾸기</h4>
+          <p><span class="k">할 일</span>촬영할 때와 다른 배경(공책 위, 손바닥 위 등)에서 같은 사물을 비춰 봅니다.</p>
+          <p><span class="k">생각해 볼 질문</span>결과가 달라졌다면, AI는 사물 말고 무엇을 함께 보고 판단했을까요?</p>
+          <p class="concept">데이터의 다양성</p>
+          <label><input type="checkbox" id="mc2"> 해 봤어요</label>
+        </article>
+        <article class="mission" id="m3">
+          <h4>데이터 줄이기</h4>
+          <p><span class="k">할 일</span>아래 버튼을 누르면 사물마다 사진 5장만 남기고 다시 학습합니다. 그다음 사물을 비춰 봅니다.</p>
+          <div class="row"><button type="button" id="reduceBtn">5장만 남기고 다시 학습</button><button type="button" id="restoreBtn" hidden>원래 사진으로 되돌리기</button></div>
+          <p><span class="k">생각해 볼 질문</span>전보다 자주 틀리거나 막대가 더 흔들리나요? 왜 그럴까요?</p>
+          <p class="concept">데이터의 양</p>
+          <label><input type="checkbox" id="mc3"> 해 봤어요</label>
+        </article>
+        <article class="mission" id="m4">
+          <h4>친구 AI와 대결</h4>
+          <p><span class="k">할 일</span>짝의 노트북 카메라에 내 물건을 비춰 봅니다. 내 노트북에도 짝의 물건을 비춰 봅니다.</p>
+          <p><span class="k">생각해 볼 질문</span>누구의 AI가 더 잘 맞혔나요? 사진을 어떻게 찍은 쪽이 더 잘 맞혔을까요?</p>
+          <p class="concept">처음 보는 데이터에도 맞히는 힘(일반화)</p>
+          <label><input type="checkbox" id="mc4"> 해 봤어요</label>
+        </article>
+      </div>
+    </div>
+  </section>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.1/dist/mobilenet.min.js"></script>
+<script>
+(() => {
+'use strict';
+const $ = id => document.getElementById(id);
+const COLORS = ['--c0','--c1','--c2','--c3','--c4'];
+const MAX_CLASSES = 5, MIN_SHOTS = 10, GOAL_SHOTS = 50, SIZE = 224;
+
+const state = {
+  classes: [], nextId: 0,
+  extractor: null,      // { embed(canvas) -> tf.Tensor2D [1, d] }
+  head: null, trainedIds: null, trainedNames: null,
+  stream: null, mode: 'live', predicting: false, busy: false, started: false, backup: null,
+};
+
+/* ---------- 상태 표시 ---------- */
+function setStatus(text, kind) {
+  const el = $('status'); el.textContent = text;
+  el.className = 'status' + (kind ? ' ' + kind : '');
+  const chip = $('homeStatus');
+  if (chip) { chip.textContent = kind === 'ok' ? 'AI 준비 완료' : kind === 'err' ? 'AI 준비 실패 · 인터넷 확인' : 'AI 준비 중…'; chip.className = 'chip' + (kind ? ' ' + kind : ''); }
+}
+function setStep(n) {
+  document.querySelectorAll('#steps li').forEach(li => {
+    const s = +li.dataset.s;
+    li.className = s < n ? 'done' : s === n ? 'on' : '';
+  });
+}
+const color = i => getComputedStyle(document.documentElement).getPropertyValue(COLORS[i % COLORS.length]).trim();
+
+/* ---------- 1. 이름 정하기 ---------- */
+function addClass(name) {
+  if (state.classes.length >= MAX_CLASSES) return;
+  state.classes.push({ id: state.nextId++, name, samples: [] });
+  invalidateModel(); renderClasses(); renderBins(); updateTrainable();
+}
+function renderClasses() {
+  const list = $('classList'); list.innerHTML = '';
+  state.classes.forEach((c, i) => {
+    const row = document.createElement('div'); row.className = 'cname';
+    const dot = document.createElement('span'); dot.className = 'dot'; dot.style.background = `var(${COLORS[i % 5]})`;
+    const inp = document.createElement('input'); inp.type = 'text'; inp.value = c.name; inp.id = 'cname-' + c.id; inp.maxLength = 12;
+    inp.setAttribute('aria-label', `${i + 1}번 사물 이름`);
+    inp.addEventListener('input', () => { c.name = inp.value.trim() || `사물 ${i + 1}`; renderBinNames(); renderProbRows(); });
+    const del = document.createElement('button'); del.type = 'button'; del.textContent = '삭제';
+    del.disabled = state.classes.length <= 2;
+    del.addEventListener('click', () => {
+      state.classes = state.classes.filter(x => x !== c);
+      invalidateModel(); renderClasses(); renderBins(); updateTrainable();
+    });
+    row.append(dot, inp, del); list.append(row);
+  });
+  $('addClass').disabled = state.classes.length >= MAX_CLASSES;
+  $('classHint').textContent = `${state.classes.length} / ${MAX_CLASSES}개`;
+}
+$('addClass').addEventListener('click', () => addClass(`사물 ${state.classes.length + 1}`));
+
+/* ---------- 카메라 ---------- */
+async function startCamera() {
+  const msg = $('camMsg');
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    msg.textContent = '이 브라우저에서는 카메라를 쓸 수 없습니다. Chrome 또는 Edge로 열어 주세요. 사진 파일 올리기로 진행할 수 있습니다.';
+    return;
+  }
+  try {
+    state.stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' }, audio: false });
+    $('video').srcObject = state.stream; $('video2').srcObject = state.stream;
+    await $('video').play().catch(() => {}); $('video2').play().catch(() => {});
+    msg.hidden = true;
+  } catch (e) {
+    const n = e && e.name;
+    msg.textContent =
+      n === 'NotAllowedError' ? '카메라 권한이 거부되었습니다. 주소창 왼쪽(또는 오른쪽)의 카메라 아이콘을 눌러 \'허용\'으로 바꾼 뒤 새로고침하세요.' :
+      n === 'NotReadableError' ? '다른 프로그램(Zoom, 카메라 앱 등)이 카메라를 쓰고 있습니다. 그 프로그램을 끄고 새로고침하세요.' :
+      n === 'NotFoundError' ? '카메라를 찾지 못했습니다. 각 사물의 \'파일 올리기\'로 사진을 넣어 진행하세요.' :
+      '카메라를 켜지 못했습니다(' + (n || '알 수 없는 오류') + '). 새로고침하거나 선생님께 알려 주세요.';
+  }
+}
+const camReady = () => { const v = $('video'); return v.readyState >= 2 && v.videoWidth > 0; };
+
+/* 영상 가운데를 정사각형으로 잘라 224x224 캔버스에 담는다(화면처럼 좌우 반전). */
+function grabFrame() {
+  const v = $('video'), c = document.createElement('canvas');
+  c.width = c.height = SIZE;
+  const s = Math.min(v.videoWidth, v.videoHeight);
+  const ctx = c.getContext('2d');
+  ctx.translate(SIZE, 0); ctx.scale(-1, 1);
+  ctx.drawImage(v, (v.videoWidth - s) / 2, (v.videoHeight - s) / 2, s, s, 0, 0, SIZE, SIZE);
+  return c;
+}
+function imageToCanvas(img) {
+  const c = document.createElement('canvas'); c.width = c.height = SIZE;
+  const w = img.naturalWidth || img.width, h = img.naturalHeight || img.height, s = Math.min(w, h);
+  c.getContext('2d').drawImage(img, (w - s) / 2, (h - s) / 2, s, s, 0, 0, SIZE, SIZE);
+  return c;
+}
+function loadFileAsCanvas(file) {
+  return new Promise((res, rej) => {
+    const url = URL.createObjectURL(file), img = new Image();
+    img.onload = () => { const c = imageToCanvas(img); URL.revokeObjectURL(url); res(c); };
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('이미지를 읽지 못했습니다')); };
+    img.src = url;
+  });
+}
+
+/* ---------- 2. 촬영 ---------- */
+function addSample(c, canvas) {
+  const t = document.createElement('canvas'); t.width = t.height = 64;
+  t.getContext('2d').drawImage(canvas, 0, 0, 64, 64);
+  c.samples.push({ canvas, thumb: t.toDataURL('image/jpeg', 0.7), emb: null });
+}
+function renderBins() {
+  const list = $('binList'); list.innerHTML = '';
+  state.classes.forEach((c, i) => {
+    const bin = document.createElement('div'); bin.className = 'bin'; bin.dataset.id = c.id;
+    bin.innerHTML = `
+      <div class="bin-head">
+        <b><span class="dot" style="width:10px;height:10px;border-radius:50%;background:var(${COLORS[i % 5]})"></span><span class="bname"></span></b>
+        <span class="count"></span>
+      </div>
+      <div class="bar"><i style="background:var(${COLORS[i % 5]})"></i></div>
+      <div class="row">
+        <button type="button" class="hold" id="hold-${c.id}">누르고 있으면 촬영</button>
+        <label class="upl">파일 올리기<input type="file" accept="image/*" multiple id="file-${c.id}"></label>
+        <button type="button" id="clear-${c.id}">모두 지우기</button>
+      </div>
+      <div class="thumbs"></div>`;
+    list.append(bin);
+    bindHold(bin.querySelector('.hold'), c);
+    bin.querySelector('input[type=file]').addEventListener('change', async e => {
+      for (const f of e.target.files) { try { addSample(c, await loadFileAsCanvas(f)); } catch (_) {} }
+      e.target.value = ''; afterSamplesChanged();
+    });
+    bin.querySelector(`#clear-${c.id}`).addEventListener('click', () => { c.samples = []; afterSamplesChanged(); });
+  });
+  renderBinNames(); refreshBins();
+}
+function renderBinNames() {
+  state.classes.forEach(c => { const el = document.querySelector(`.bin[data-id="${c.id}"] .bname`); if (el) el.textContent = c.name; });
+}
+function refreshBins() {
+  state.classes.forEach(c => {
+    const bin = document.querySelector(`.bin[data-id="${c.id}"]`); if (!bin) return;
+    const n = c.samples.length;
+    bin.querySelector('.count').textContent = `${n}장` + (n < MIN_SHOTS ? ` (최소 ${MIN_SHOTS}장)` : n < 30 ? ' (30장 이상 권장)' : '');
+    bin.querySelector('.bar i').style.width = Math.min(100, n / GOAL_SHOTS * 100) + '%';
+    const th = bin.querySelector('.thumbs');
+    // 새로 생긴 썸네일만 추가하고, 줄어든 경우 다시 그린다
+    if (th.childElementCount > n || th._arr !== c.samples) { th.innerHTML = ''; th._arr = c.samples; }
+    for (let k = th.childElementCount; k < n; k++) {
+      const s = c.samples[k], img = document.createElement('img');
+      img.src = s.thumb; img.alt = `${c.name} 사진 ${k + 1}`; img.title = '눌러서 지우기';
+      img.addEventListener('click', () => { c.samples.splice(c.samples.indexOf(s), 1); afterSamplesChanged(); });
+      th.append(img);
+    }
+  });
+}
+function afterSamplesChanged() { refreshBins(); updateTrainable(); }
+
+function bindHold(btn, c) {
+  let timer = null;
+  const start = e => {
+    e.preventDefault();
+    if (timer) return;
+    if (!camReady()) { $('tip').textContent = '카메라가 아직 켜지지 않았습니다. 카메라 화면의 안내를 확인하세요.'; return; }
+    btn.classList.add('active'); btn.textContent = '촬영 중…'; $('flash').classList.add('on');
+    const shoot = () => { addSample(c, grabFrame()); refreshBins(); };
+    shoot(); timer = setInterval(shoot, 100);
+  };
+  const stop = () => {
+    if (!timer) return;
+    clearInterval(timer); timer = null;
+    btn.classList.remove('active'); btn.textContent = '누르고 있으면 촬영'; $('flash').classList.remove('on');
+    updateTrainable();
+  };
+  btn.addEventListener('pointerdown', start);
+  ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => btn.addEventListener(ev, stop));
+  btn.addEventListener('keydown', e => { if ((e.key === ' ' || e.key === 'Enter') && !e.repeat) start(e); });
+  btn.addEventListener('keyup', e => { if (e.key === ' ' || e.key === 'Enter') stop(); });
+}
+
+/* ---------- AI 준비: 미리 학습된 MobileNet으로 특징 뽑기 ---------- */
+async function loadExtractor() {
+  try {
+    const m = await mobilenet.load({ version: 2, alpha: 0.5 });
+    return { embed: cv => tf.tidy(() => m.infer(cv, true)) };
+  } catch (e1) {
+    console.warn('mobilenet.load 실패, 예비 경로 사용', e1);
+    const base = await tf.loadLayersModel('https://storage.googleapis.com/tfjs-models/tfjs/mobilenet_v1_0.25_224/model.json');
+    const trunc = tf.model({ inputs: base.inputs, outputs: base.getLayer('conv_pw_13_relu').output });
+    return { embed: cv => tf.tidy(() => trunc.predict(tf.browser.fromPixels(cv).toFloat().div(127.5).sub(1).expandDims()).mean([1, 2])) };
+  }
+}
+
+/* ---------- 3. 학습 ---------- */
+function updateTrainable() {
+  const ok = state.classes.length >= 2 && state.classes.every(c => c.samples.length >= MIN_SHOTS);
+  const ready = ok && !!state.extractor && !state.busy;
+  $('trainBtn').disabled = !ready;
+  $('sec3').setAttribute('aria-disabled', ok ? 'false' : 'true');
+  const short = state.classes.filter(c => c.samples.length < MIN_SHOTS).map(c => c.name);
+  $('trainHint').textContent = state.backup ? '데이터 줄이기 미션 중입니다. 미션 카드의 \'원래 사진으로 되돌리기\'로 돌아갈 수 있습니다.' : !ok ? `사진이 부족한 사물: ${short.join(', ')} (사물마다 ${MIN_SHOTS}장 이상)` :
+    !state.extractor ? 'AI 준비가 끝나면 학습할 수 있습니다.' : '준비 완료. 학습 시작을 누르세요.';
+  if (!state.started) setStep(0);
+  else if (!state.head) setStep(ok ? 3 : state.classes.some(c => c.samples.length) ? 2 : 1);
+}
+
+function drawChart(canvas, values, maxEpochs, yMax, col) {
+  const dpr = window.devicePixelRatio || 1, W = canvas.clientWidth || 480, H = canvas.clientHeight || 160;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  const ctx = canvas.getContext('2d'); ctx.scale(dpr, dpr); ctx.clearRect(0, 0, W, H);
+  const css = getComputedStyle(document.documentElement);
+  const L = 36, R = 8, T = 8, B = 22, pw = W - L - R, ph = H - T - B;
+  ctx.strokeStyle = css.getPropertyValue('--line'); ctx.fillStyle = css.getPropertyValue('--muted');
+  ctx.font = '11px ' + css.getPropertyValue('--mono'); ctx.lineWidth = 1;
+  for (let k = 0; k <= 4; k++) {
+    const y = T + ph * (1 - k / 4); ctx.beginPath(); ctx.moveTo(L, y); ctx.lineTo(W - R, y); ctx.stroke();
+    ctx.fillText((yMax * k / 4).toFixed(yMax > 2 ? 1 : 2), 2, y + 4);
+  }
+  ctx.fillText('에폭 1', L, H - 6); ctx.textAlign = 'right'; ctx.fillText(String(maxEpochs), W - R, H - 6); ctx.textAlign = 'left';
+  if (!values.length) return;
+  const X = i => L + (maxEpochs <= 1 ? 0 : i / (maxEpochs - 1) * pw), Y = v => T + ph * (1 - Math.min(v, yMax) / yMax);
+  ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.beginPath();
+  values.forEach((v, i) => i ? ctx.lineTo(X(i), Y(v)) : ctx.moveTo(X(i), Y(v))); ctx.stroke();
+  const i = values.length - 1; ctx.fillStyle = col; ctx.beginPath(); ctx.arc(X(i), Y(values[i]), 4, 0, 7); ctx.fill();
+}
+
+async function train(opts = {}) {
+  if (state.busy) return;
+  state.busy = true; stopLive(); updateTrainable();
+  const prog = $('trainProg'), t0 = performance.now();
+  $('trainResult').hidden = true;
+  try {
+    // (1) 사진마다 특징 뽑기 (이미 뽑은 사진은 건너뜀)
+    const all = state.classes.flatMap(c => c.samples);
+    let done = all.filter(s => s.emb).length;
+    for (const s of all) {
+      if (s.emb) continue;
+      const t = state.extractor.embed(s.canvas); s.emb = t.dataSync().slice(); t.dispose();
+      done++;
+      if (done % 5 === 0 || done === all.length) { prog.textContent = `사진 특징 뽑는 중 ${done} / ${all.length}`; await tf.nextFrame(); }
+    }
+    // (2) 학습 데이터 만들기
+    const dim = all[0].emb.length, n = all.length, k = state.classes.length;
+    const xs = new Float32Array(n * dim), ys = [];
+    let r = 0;
+    state.classes.forEach((c, ci) => c.samples.forEach(s => { xs.set(s.emb, r * dim); ys.push(ci); r++; }));
+    const X = tf.tensor2d(xs, [n, dim]), Y = tf.oneHot(tf.tensor1d(ys, 'int32'), k);
+    // (3) 작은 분류기(마지막 부분)만 새로 학습
+    if (state.head) state.head.dispose();
+    const head = tf.sequential({ layers: [
+      tf.layers.dense({ inputShape: [dim], units: 64, activation: 'relu' }),
+      tf.layers.dropout({ rate: 0.2 }),
+      tf.layers.dense({ units: k, activation: 'softmax' }),
+    ]});
+    const epochs = +$('epochs').value, lr = +$('lr').value;
+    head.compile({ optimizer: tf.train.adam(lr), loss: 'categoricalCrossentropy', metrics: ['accuracy'] });
+    const losses = [], accs = [], accent = color(0), warm = color(1);
+    drawChart($('lossChart'), [], epochs, 1.5, warm); drawChart($('accChart'), [], epochs, 1, accent);
+    await head.fit(X, Y, {
+      epochs, batchSize: 16, shuffle: true,
+      callbacks: { onEpochEnd: async (ep, logs) => {
+        losses.push(logs.loss); accs.push(logs.acc ?? logs.accuracy);
+        const lmax = Math.max(1.5, Math.ceil(losses[0] * 2) / 2);
+        drawChart($('lossChart'), losses, epochs, lmax, warm); drawChart($('accChart'), accs, epochs, 1, accent);
+        prog.textContent = `학습 중 ${ep + 1} / ${epochs} 에폭`;
+        await tf.nextFrame();
+      } },
+    });
+    X.dispose(); Y.dispose();
+    state.head = head;
+    state.trainedIds = state.classes.map(c => c.id);
+    const sec = ((performance.now() - t0) / 1000).toFixed(1);
+    prog.textContent = '';
+    $('trainResult').textContent = `학습 완료: ${sec}초 걸렸고, 학습한 사진 ${n}장에 대한 정확도는 ${Math.round(accs[accs.length - 1] * 100)}%입니다. 아래에서 직접 확인해 보세요.`;
+    $('trainResult').hidden = false;
+    $('sec4').setAttribute('aria-disabled', 'false');
+    setStep(4); renderProbRows(); setMode('live');
+    if (opts.scroll !== false) $('sec4').scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+  } catch (e) {
+    console.error(e);
+    prog.textContent = '';
+    setStatus('학습 중 오류가 났습니다: ' + (e.message || e) + ' 새로고침 없이 다시 학습 시작을 눌러 보세요.', 'err');
+  } finally {
+    state.busy = false; updateTrainable();
+  }
+}
+$('trainBtn').addEventListener('click', train);
+
+/* 사물 목록이 바뀌면 이전 모델은 쓸 수 없다 */
+function invalidateModel() {
+  state.backup = null; $('restoreBtn').hidden = true;
+  if (!state.head) return;
+  stopLive(); state.head.dispose(); state.head = null; state.trainedIds = null;
+  $('sec4').setAttribute('aria-disabled', 'true'); $('trainResult').hidden = true;
+  $('topLabel').textContent = '-'; $('probs').innerHTML = '';
+  $('liveMsg').hidden = false; $('liveMsg').textContent = '사물 목록이 바뀌었습니다. 다시 학습해 주세요.';
+}
+
+/* ---------- 4. 예측 ---------- */
+function trainedClasses() { return (state.trainedIds || []).map(id => state.classes.find(c => c.id === id)); }
+function renderProbRows() {
+  const box = $('probs'); box.innerHTML = '';
+  trainedClasses().forEach((c, i) => {
+    const row = document.createElement('div'); row.className = 'prob';
+    row.innerHTML = `<span class="pname"></span><div class="track"><div class="fill" style="background:var(${COLORS[i % 5]})"></div></div><span class="pct">0%</span>`;
+    row.querySelector('.pname').textContent = c ? c.name : '?';
+    box.append(row);
+  });
+}
+function showProbs(p) {
+  const cls = trainedClasses(), rows = $('probs').children;
+  let best = 0; p.forEach((v, i) => { if (v > p[best]) best = i; });
+  p.forEach((v, i) => { if (!rows[i]) return; rows[i].querySelector('.fill').style.width = (v * 100).toFixed(1) + '%'; rows[i].querySelector('.pct').textContent = Math.round(v * 100) + '%'; });
+  $('topLabel').textContent = cls[best] ? `${cls[best].name} (${Math.round(p[best] * 100)}%)` : '-';
+}
+function predictCanvas(cv) {
+  return tf.tidy(() => state.head.predict(state.extractor.embed(cv)).dataSync().slice());
+}
+let liveTimer = null, liveDelay = 120;
+function liveLoop() {
+  if (!state.predicting) return;
+  if (state.head && camReady()) {
+    const t = performance.now();
+    showProbs(Array.from(predictCanvas(grabFrame())));
+    // 느린 노트북이면 예측 간격을 늘린다
+    const cost = performance.now() - t;
+    liveDelay = cost > 150 ? 400 : cost > 60 ? 200 : 120;
+  }
+  liveTimer = setTimeout(liveLoop, liveDelay);
+}
+function startLive() {
+  if (!state.head) return;
+  $('liveMsg').hidden = camReady();
+  $('liveMsg').textContent = '카메라가 꺼져 있어 실시간 예측을 할 수 없습니다. \'사진 한 장\'에서 파일로 예측하세요.';
+  state.predicting = true; clearTimeout(liveTimer); liveLoop();
+}
+function stopLive() { state.predicting = false; clearTimeout(liveTimer); }
+function setMode(m) {
+  state.mode = m;
+  $('modeLive').setAttribute('aria-pressed', m === 'live'); $('modePhoto').setAttribute('aria-pressed', m === 'photo');
+  $('liveBox').hidden = m !== 'live'; $('photoBox').hidden = m !== 'photo';
+  if (m === 'live') startLive(); else stopLive();
+}
+$('modeLive').addEventListener('click', () => setMode('live'));
+$('modePhoto').addEventListener('click', () => setMode('photo'));
+$('snapBtn').addEventListener('click', () => {
+  if (!state.head) return;
+  if (!camReady()) { $('topLabel').textContent = '카메라가 꺼져 있습니다'; return; }
+  const cv = grabFrame(); $('snapImg').src = cv.toDataURL('image/jpeg', 0.9); showProbs(Array.from(predictCanvas(cv)));
+});
+$('snapFile').addEventListener('change', async e => {
+  const f = e.target.files[0]; e.target.value = '';
+  if (!f || !state.head) return;
+  try { const cv = await loadFileAsCanvas(f); $('snapImg').src = cv.toDataURL('image/jpeg', 0.9); showProbs(Array.from(predictCanvas(cv))); }
+  catch (err) { $('topLabel').textContent = '사진을 읽지 못했습니다'; }
+});
+$('moreBtn').addEventListener('click', () => {
+  stopLive(); setMode('photo');
+  $('sec2').scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
+
+/* 새로고침하면 사진이 사라진다는 것을 알린다 */
+window.addEventListener('beforeunload', e => {
+  if (state.classes.some(c => c.samples.length)) { e.preventDefault(); e.returnValue = ''; }
+});
+
+/* ---------- 시작 ---------- */
+['펜', '지우개', '아무것도 없음'].forEach(addClass);
+setStep(0);
+$('startBtn').addEventListener('click', () => {
+  state.started = true;
+  $('sec0').hidden = true; $('labBody').hidden = false; $('guideAgain').hidden = false;
+  if (!state.stream) startCamera();
+  updateTrainable(); if (state.head) setStep(4);
+  window.scrollTo({ top: 0 });
+  drawChart($('lossChart'), [], +$('epochs').value, 1.5, color(1)); drawChart($('accChart'), [], +$('epochs').value, 1, color(0));
+});
+$('guideAgain').addEventListener('click', () => {
+  $('sec0').hidden = false; $('startBtn').textContent = '확인했어요, 실습으로 돌아가기';
+  $('labBody').hidden = true; stopLive(); setStep(0); window.scrollTo({ top: 0 });
+});
+$('startBtn').addEventListener('click', () => { if (state.head && state.mode === 'live') startLive(); });
+
+/* 실험 미션 */
+[1, 2, 3, 4].forEach(i => $('mc' + i).addEventListener('change', e => $('m' + i).classList.toggle('done', e.target.checked)));
+$('reduceBtn').addEventListener('click', async () => {
+  if (!state.head || state.busy) return;
+  if (!state.backup) state.backup = new Map(state.classes.map(c => [c.id, c.samples.slice()]));
+  state.classes.forEach(c => {
+    const all = state.backup.get(c.id) || c.samples;
+    if (all.length <= 5) { c.samples = all.slice(); return; }
+    c.samples = [0, 1, 2, 3, 4].map(k => all[Math.floor(k * all.length / 5)]);
+  });
+  refreshBins(); $('reduceBtn').disabled = true;
+  await train({ scroll: false });
+  $('reduceBtn').disabled = false; $('restoreBtn').hidden = false;
+});
+$('restoreBtn').addEventListener('click', async () => {
+  if (!state.backup || state.busy) return;
+  state.classes.forEach(c => { if (state.backup.has(c.id)) c.samples = state.backup.get(c.id); });
+  state.backup = null; refreshBins(); $('restoreBtn').hidden = true;
+  await train({ scroll: false });
+});
+drawChart($('lossChart'), [], 20, 1.5, color(1)); drawChart($('accChart'), [], 20, 1, color(0));
+(async () => {
+  if (typeof tf === 'undefined') { setStatus('AI 라이브러리를 내려받지 못했습니다. 인터넷 연결을 확인하고 새로고침하세요.', 'err'); return; }
+  try {
+    await tf.ready();
+    state.extractor = await loadExtractor();
+    const warm = document.createElement('canvas'); warm.width = warm.height = SIZE;
+    tf.tidy(() => { state.extractor.embed(warm); }); // 첫 실행 준비
+    setStatus(`AI 준비 완료 (${tf.getBackend() === 'webgl' ? '그래픽 가속 사용' : '일반 모드'}). 사물마다 사진을 찍어 주세요.`, 'ok');
+  } catch (e) {
+    console.error(e);
+    setStatus('AI 모델을 내려받지 못했습니다. 인터넷 연결을 확인하고 새로고침하세요. 계속되면 선생님께 알려 주세요.', 'err');
+  }
+  updateTrainable();
+})();
+
+window.__lab = state; // 수업 중 문제 확인용
+window.__app = {
+  state, startCamera, stopLive,
+  enterLab() { if (state.started && state.head && state.mode === 'live' && $('sec0').hidden) startLive(); },
+};
+})();
+</script>
+<script>
+(() => {
+'use strict';
+const $ = id => document.getElementById(id);
+const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const app = window.__app;
+const stage = $('stage');
+
+/* ---------- 화면 전환 ---------- */
+function showView(v) {
+  ['home', 'theory', 'lab'].forEach(n => { $('view-' + n).hidden = n !== v; });
+  document.querySelectorAll('[data-nav]').forEach(b => b.setAttribute('aria-current', b.dataset.nav === v ? 'page' : 'false'));
+  const done = !!app.theoryDone;
+  $('theoryDone').hidden = !done;
+  $('goTheory').classList.toggle('main', !done); $('goLab').classList.toggle('main', done);
+  if (v !== 'lab') app.stopLive();
+  if (v !== 'theory') stopAll();
+  if (v === 'lab') app.enterLab();
+  if (v === 'theory') openTheory();
+  window.scrollTo({ top: 0 });
+}
+$('goTheory').addEventListener('click', () => showView('theory'));
+$('goLab').addEventListener('click', () => showView('lab'));
+document.querySelectorAll('[data-home]').forEach(b => b.addEventListener('click', () => showView('home')));
+document.querySelectorAll('[data-nav]').forEach(b => b.addEventListener('click', () => showView(b.dataset.nav)));
+
+/* ---------- 애니메이션 도구 ---------- */
+let timers = [], raf = 0, cleanups = [];
+function stopAll() {
+  timers.forEach(clearTimeout); timers = [];
+  cancelAnimationFrame(raf); raf = 0;
+  cleanups.forEach(f => { try { f(); } catch (_) {} }); cleanups = [];
+}
+const at = (t, fn) => { timers.push(setTimeout(fn, RM ? 0 : t)); };
+function anim(el, kf, o = {}) {
+  if (!el) return null;
+  return el.animate(kf, { duration: RM ? 0 : (o.d ?? 600), delay: RM ? 0 : (o.delay ?? 0), easing: o.e ?? 'cubic-bezier(.2,.7,.2,1)', fill: 'both', iterations: RM ? 1 : (o.it ?? 1) });
+}
+const fadeIn = (el, d = 450, delay = 0) => anim(el, [{ opacity: 0 }, { opacity: 1 }], { d, delay });
+const fadeOut = (el, d = 350, delay = 0) => anim(el, [{ opacity: 1 }, { opacity: 0 }], { d, delay });
+const pop = (el, delay = 0) => anim(el, [{ opacity: 0, transform: 'scale(.6)' }, { opacity: 1, transform: 'scale(1)' }], { d: 450, delay, e: 'cubic-bezier(.3,1.4,.5,1)' });
+const moveBy = (el, dx, dy, o = {}) => anim(el, [{ transform: 'translate(0px,0px) scale(1)' }, { transform: `translate(${dx}px,${dy}px) scale(${o.s ?? 1})` }], { d: o.d ?? 700, delay: o.delay ?? 0 });
+const q = s => stage.querySelector(s);
+const qa = s => Array.from(stage.querySelectorAll(s));
+function svg(inner, label) {
+  stage.innerHTML = `<svg class="scene" viewBox="0 0 800 400" role="img" aria-label="${label}">${inner}</svg>`;
+  return stage.firstChild;
+}
+
+/* ---------- 그림 조각 ---------- */
+const pen = (x, y, a = 0, c = 'var(--c0)', s = 1) => `<g transform="translate(${x},${y}) rotate(${a}) scale(${s})"><rect x="-44" y="-7" width="11" height="14" rx="3" fill="var(--fg)" opacity=".75"/><rect x="-36" y="-6" width="64" height="12" rx="3" fill="${c}"/><polygon points="28,-6 42,0 28,6" fill="var(--tip)"/><circle cx="41" cy="0" r="1.6" fill="var(--fg)"/></g>`;
+const cappedPen = (x, y, a = 0, s = 1) => `<g transform="translate(${x},${y}) rotate(${a}) scale(${s})"><rect x="-38" y="-6" width="60" height="12" rx="3" fill="var(--c4)"/><rect x="14" y="-8" width="30" height="16" rx="7" fill="var(--fg)" opacity=".8"/><rect x="20" y="-11" width="18" height="3" rx="1.5" fill="var(--fg)" opacity=".8"/></g>`;
+const sharp = (x, y, a = 0, s = 1) => `<g transform="translate(${x},${y}) rotate(${a}) scale(${s})"><rect x="-42" y="-5" width="70" height="10" rx="2" fill="var(--c3)"/><rect x="-42" y="-9" width="24" height="3" fill="var(--muted)"/><rect x="-8" y="-6" width="5" height="12" fill="var(--muted)"/><polygon points="28,-5 37,-2 37,2 28,5" fill="var(--muted)"/><line x1="37" y1="0" x2="44" y2="0" stroke="var(--fg)" stroke-width="1.3"/></g>`;
+const eraser = (x, y, a = 0, s = 1) => `<g transform="translate(${x},${y}) rotate(${a}) scale(${s})"><rect x="-26" y="-13" width="52" height="26" rx="5" fill="var(--paper)" stroke="var(--fg)" stroke-width="1.2"/><rect x="-8" y="-13.6" width="28" height="27.2" fill="var(--c2)"/></g>`;
+const card = (x, y, icon, tag, w = 70, h = 56) => `<g transform="translate(${x},${y})"><rect x="${-w / 2}" y="${-h / 2}" width="${w}" height="${h}" rx="6" fill="var(--paper)" stroke="var(--line)" stroke-width="1.2"/>${icon}${tag ? `<rect x="${-w / 2}" y="${h / 2 - 2}" width="${w}" height="18" rx="4" fill="var(--accent)"/><text x="0" y="${h / 2 + 11}" text-anchor="middle" class="t-tag">${tag}</text>` : ''}</g>`;
+const arrowDefs = `<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--muted)"/></marker><marker id="ahA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--accent)"/></marker></defs>`;
+const lock = (x, y) => `<g transform="translate(${x},${y})"><path d="M-12 -4 V-14 a12 12 0 0 1 24 0 V-4" fill="none" stroke="var(--fg)" stroke-width="4"/><rect x="-18" y="-6" width="36" height="28" rx="4" fill="var(--fg)"/><circle cx="0" cy="6" r="4" fill="var(--surface)"/></g>`;
+
+/* ---------- 장면 ---------- */
+const scenes = [
+{
+  title: 'AI는 예시로 배운다',
+  caption: '사람이 규칙을 하나하나 써 주는 대신 정답(이름표)이 붙은 예시를 많이 보여 주면, AI가 스스로 구분하는 방법을 찾습니다. 이 과정을 학습이라고 합니다.',
+  terms: [['학습', '정답이 붙은 예시를 보고 구분하는 방법을 스스로 찾는 과정.'], ['데이터', 'AI가 배우는 재료. 이 실습에서는 사진과 그 이름표입니다.']],
+  link: '실습 ② 촬영: 사물마다 사진을 찍어 예시를 모읍니다.',
+  build() {
+    const items = [
+      { id: 'a0', x: 450, y: 95, html: pen(0, 0, -20, 'var(--c0)'), tx: 495, ty: 280, k: 'p' },
+      { id: 'a1', x: 560, y: 80, html: eraser(0, 0, 15), tx: 650, ty: 280, k: 'e' },
+      { id: 'a2', x: 680, y: 100, html: pen(0, 0, 30, 'var(--c1)'), tx: 540, ty: 300, k: 'p' },
+      { id: 'a3', x: 470, y: 160, html: eraser(0, 0, -10), tx: 715, ty: 290, k: 'e' },
+      { id: 'a4', x: 600, y: 150, html: pen(0, 0, 5, 'var(--c3)'), tx: 500, ty: 325, k: 'p' },
+      { id: 'a5', x: 730, y: 165, html: pen(0, 0, -40, 'var(--c2)'), tx: 550, ty: 330, k: 'p' },
+      { id: 'a6', x: 545, y: 112, html: eraser(0, 0, 30), tx: 680, ty: 325, k: 'e' },
+    ];
+    svg(`${arrowDefs}
+      <text x="30" y="36" class="t-h">규칙으로 만드는 프로그램</text>
+      <text x="430" y="36" class="t-h">예시로 배우는 AI</text>
+      <text id="st1" x="430" y="60" class="t-s strong ok" opacity="0">① 사람이 이름표를 붙여 예시를 보여 줍니다</text>
+      <text id="st2" x="430" y="60" class="t-s strong ok" opacity="0">② 처음 보는 사진도 스스로 구분합니다</text>
+      <line x1="405" y1="20" x2="405" y2="385" stroke="var(--line)"/>
+      <rect x="30" y="56" width="345" height="112" rx="8" fill="var(--paper)" stroke="var(--line)"/>
+      <text x="48" y="92" class="t-code" id="l1" opacity="0">만약 길쭉하고</text>
+      <text x="48" y="120" class="t-code" id="l2" opacity="0">끝이 뾰족하면</text>
+      <text x="48" y="148" class="t-code" id="l3" opacity="0">'펜'이라고 답한다</text>
+      <g id="r1" opacity="0">${pen(90, 225)}<line x1="150" y1="225" x2="195" y2="225" stroke="var(--muted)" stroke-width="2" marker-end="url(#ah)"/><text x="208" y="231" class="t-b ok">펜 (맞음)</text></g>
+      <g id="r2" opacity="0">${cappedPen(90, 300)}<line x1="150" y1="300" x2="195" y2="300" stroke="var(--muted)" stroke-width="2" marker-end="url(#ah)"/><text x="208" y="297" class="t-b bad">모름</text><text x="208" y="318" class="t-s">뚜껑을 닫은 펜은 규칙에 없음</text></g>
+      <rect x="440" y="255" width="150" height="100" rx="10" fill="none" stroke="var(--c0)" stroke-width="2" stroke-dasharray="6 5"/>
+      <text x="515" y="378" text-anchor="middle" class="t-b">펜</text>
+      <rect x="615" y="255" width="150" height="100" rx="10" fill="none" stroke="var(--c2)" stroke-width="2" stroke-dasharray="6 5"/>
+      <text x="690" y="378" text-anchor="middle" class="t-b">지우개</text>
+      ${items.map(i => `<g class="mv" id="${i.id}" opacity="0"><g transform="translate(${i.x},${i.y})">${i.html}</g></g>`).join('')}
+      <g id="nw" opacity="0">${cappedPen(500, 160, -15)}<text x="455" y="205" class="t-s">처음 보는 사진</text><line x1="560" y1="160" x2="620" y2="160" stroke="var(--muted)" stroke-width="2" marker-end="url(#ah)"/></g>
+      <text id="ans" x="635" y="166" class="t-b ok" opacity="0">펜</text>
+    `, 'AI는 예시로 배운다');
+    at(300, () => fadeIn(q('#l1'))); at(900, () => fadeIn(q('#l2'))); at(1500, () => fadeIn(q('#l3')));
+    at(2300, () => fadeIn(q('#r1'))); at(3600, () => fadeIn(q('#r2')));
+    items.forEach((i, k) => {
+      at(300 + k * 120, () => pop(q('#' + i.id)));
+      at(1500 + k * 420, () => moveBy(q('#' + i.id), i.tx - i.x, i.ty - i.y, { s: 0.7, d: 800 }));
+    });
+    at(1300, () => fadeIn(q('#st1'))); at(4900, () => { fadeOut(q('#st1')); fadeIn(q('#st2'), 400, 300); }); at(5000, () => fadeIn(q('#nw'))); at(6000, () => pop(q('#ans')));
+  },
+},
+{
+  title: '컴퓨터가 보는 사진',
+  caption: '컴퓨터에게 사진은 숫자가 빽빽하게 들어 있는 표입니다. 숫자가 작을수록 어둡고, 클수록 밝습니다.',
+  terms: [['픽셀', '사진을 이루는 가장 작은 네모 한 칸. 칸마다 밝기나 색을 나타내는 숫자가 들어 있습니다.']],
+  link: '실습 ② 촬영: 찍은 사진은 224 × 224 픽셀로 바뀌어 AI에 들어갑니다.',
+  build() {
+    stage.innerHTML = `<div class="s2">
+      <div class="s2-left"><div class="s2-label" id="pxl">원본 그림</div><canvas id="pxc" width="360" height="360" aria-label="픽셀과 숫자로 바뀌는 예시 그림"></canvas>
+        <div class="s2-legend" id="lg"><span>0 = 검정</span><i></i><span>255 = 흰색</span></div>
+        <div class="row s2-pick" role="group" aria-label="예시 그림 고르기"><span class="muted">다른 그림으로 보기</span>
+          <button type="button" data-img="smile" aria-pressed="true">웃는 얼굴</button><button type="button" data-img="seven" aria-pressed="false">숫자 7</button><button type="button" data-img="pen" aria-pressed="false">펜</button></div></div>
+      <ol class="s2-info">
+        <li id="i1">그림을 크게 확대하면 작은 네모(픽셀)가 보입니다. 칸이 적을수록 네모가 커집니다.</li>
+        <li id="i2">흑백 사진에서 픽셀 하나는 밝기 숫자 하나입니다. 0은 검정, 255는 흰색입니다.</li>
+        <li id="i3">색 사진은 픽셀마다 빨강·초록·파랑 숫자 3개를 가집니다.</li>
+        <li id="i4">이번 실습의 AI는 224 × 224 픽셀 × 3 = <b>150,528개</b>의 숫자를 보고 판단합니다.</li>
+      </ol></div>`;
+    ['#i1', '#i2', '#i3', '#i4', '#lg'].forEach(s => { q(s).style.opacity = 0; });
+    const out = q('#pxc'), ctx = out.getContext('2d');
+    const src = document.createElement('canvas'); src.width = src.height = 360;
+    const sctx = src.getContext('2d');
+    const tmp = document.createElement('canvas'), tctx = tmp.getContext('2d', { willReadFrequently: true });
+    const pictures = {
+      smile() {
+        sctx.strokeStyle = '#000'; sctx.fillStyle = '#000'; sctx.lineCap = 'round';
+        sctx.lineWidth = 30; sctx.beginPath(); sctx.arc(180, 180, 135, 0, 7); sctx.stroke();
+        sctx.beginPath(); sctx.arc(128, 140, 24, 0, 7); sctx.fill();
+        sctx.beginPath(); sctx.arc(232, 140, 24, 0, 7); sctx.fill();
+        sctx.lineWidth = 28; sctx.beginPath(); sctx.arc(180, 185, 80, 0.15 * Math.PI, 0.85 * Math.PI); sctx.stroke();
+      },
+      seven() {
+        sctx.strokeStyle = '#000'; sctx.lineWidth = 50; sctx.lineJoin = 'miter'; sctx.lineCap = 'butt';
+        sctx.beginPath(); sctx.moveTo(70, 85); sctx.lineTo(285, 85); sctx.lineTo(150, 320); sctx.stroke();
+      },
+      pen() {
+        sctx.save(); sctx.translate(180, 180); sctx.rotate(-0.6);
+        sctx.fillStyle = '#222'; sctx.fillRect(-165, -30, 60, 60);
+        sctx.fillStyle = '#3a6fc4'; sctx.fillRect(-108, -26, 190, 52);
+        sctx.fillStyle = '#c9c1b0'; sctx.beginPath(); sctx.moveTo(82, -26); sctx.lineTo(160, 0); sctx.lineTo(82, 26); sctx.fill();
+        sctx.restore();
+      },
+    };
+    let pic = 'smile', level = 0, numbers = false;
+    const render = () => {
+      sctx.fillStyle = '#ffffff'; sctx.fillRect(0, 0, 360, 360); pictures[pic]();
+      ctx.imageSmoothingEnabled = false;
+      if (!level) { ctx.drawImage(src, 0, 0); return; }
+      tmp.width = tmp.height = level;
+      tctx.imageSmoothingEnabled = true; tctx.drawImage(src, 0, 0, level, level);
+      if (!numbers) { ctx.drawImage(tmp, 0, 0, level, level, 0, 0, 360, 360); return; }
+      const d = tctx.getImageData(0, 0, level, level).data, cell = 360 / level;
+      ctx.font = '600 9.5px ' + getComputedStyle(document.documentElement).getPropertyValue('--mono');
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      for (let yy = 0; yy < level; yy++) for (let xx = 0; xx < level; xx++) {
+        const k = (yy * level + xx) * 4, g = Math.round(0.299 * d[k] + 0.587 * d[k + 1] + 0.114 * d[k + 2]);
+        ctx.fillStyle = `rgb(${g},${g},${g})`; ctx.fillRect(xx * cell, yy * cell, cell, cell);
+        ctx.fillStyle = g > 128 ? '#111' : '#f5f5f5'; ctx.fillText(String(g), xx * cell + cell / 2, yy * cell + cell / 2);
+      }
+      ctx.strokeStyle = 'rgba(127,127,127,.45)'; ctx.lineWidth = 1;
+      for (let k = 1; k < level; k++) { ctx.beginPath(); ctx.moveTo(k * cell, 0); ctx.lineTo(k * cell, 360); ctx.moveTo(0, k * cell); ctx.lineTo(360, k * cell); ctx.stroke(); }
+    };
+    const setLevel = (l, label, num = false) => { level = l; numbers = num; q('#pxl').textContent = label; render(); };
+    render();
+    at(1600, () => setLevel(64, '가로세로 64칸'));
+    at(3000, () => setLevel(32, '가로세로 32칸'));
+    at(4400, () => setLevel(16, '가로세로 16칸'));
+    at(5800, () => { setLevel(16, '16칸, 칸마다 밝기 숫자', true); fadeIn(q('#lg')); });
+    at(300, () => fadeIn(q('#i1'))); at(5800, () => fadeIn(q('#i2'))); at(7400, () => fadeIn(q('#i3'))); at(8800, () => fadeIn(q('#i4')));
+    qa('[data-img]').forEach(b => b.addEventListener('click', () => {
+      pic = b.dataset.img;
+      qa('[data-img]').forEach(x => x.setAttribute('aria-pressed', x === b));
+      render();
+    }));
+  },
+},
+{
+  title: '전체 흐름 한눈에',
+  caption: 'AI 만들기는 데이터 모으기 → 학습 → 예측, 세 단계로 이루어집니다. 오늘 실습도 이 순서로 진행합니다.',
+  terms: [['모델', '학습을 마친 AI. 새 사진을 넣으면 답을 냅니다.']],
+  link: '실습 전체: ② 촬영 → ③ 학습 → ④ 예측',
+  build() {
+    const cards = [
+      [85, 155, pen(0, 0, -15, 'var(--c0)', .55), '펜'], [150, 155, eraser(0, 0, 10, .6), '지우개'], [215, 155, pen(0, 0, 20, 'var(--c1)', .55), '펜'],
+      [85, 235, eraser(0, 0, -15, .6), '지우개'], [150, 235, pen(0, 0, 0, 'var(--c3)', .55), '펜'], [215, 235, eraser(0, 0, 25, .6), '지우개'],
+    ];
+    const net = (() => {
+      const cols = [[345, [150, 190, 230]], [400, [140, 175, 210, 245]], [455, [170, 210]]];
+      let l = '', n = '';
+      for (let c = 0; c < 2; c++) cols[c][1].forEach(y1 => cols[c + 1][1].forEach(y2 => { l += `<line x1="${cols[c][0]}" y1="${y1}" x2="${cols[c + 1][0]}" y2="${y2}"/>`; }));
+      cols.forEach(([x, ys]) => ys.forEach(y => { n += `<circle cx="${x}" cy="${y}" r="7" fill="var(--surface)" stroke="var(--accent)" stroke-width="2"/>`; }));
+      return `<g id="netL" stroke="var(--accent)" stroke-width="1.2" opacity=".25">${l}</g>${n}`;
+    })();
+    svg(`${arrowDefs}
+      <text x="40" y="70" class="t-h">① 데이터 모으기</text><text x="300" y="70" class="t-h">② 학습</text><text x="560" y="70" class="t-h">③ 예측</text>
+      <rect x="40" y="90" width="220" height="200" rx="12" fill="none" stroke="var(--line)" stroke-width="1.5"/>
+      <rect x="300" y="90" width="200" height="200" rx="12" fill="none" stroke="var(--line)" stroke-width="1.5"/>
+      <rect x="560" y="90" width="210" height="200" rx="12" fill="none" stroke="var(--line)" stroke-width="1.5"/>
+      <line x1="262" y1="190" x2="296" y2="190" stroke="var(--muted)" stroke-width="2" marker-end="url(#ah)"/>
+      <line x1="502" y1="190" x2="556" y2="190" stroke="var(--muted)" stroke-width="2" marker-end="url(#ah)"/>
+      <text x="150" y="312" text-anchor="middle" class="t-s">사진 + 이름표(정답)</text>
+      ${cards.map((c, k) => `<g class="mv" id="c${k}" opacity="0">${card(c[0], c[1], c[2], c[3], 56, 46)}</g>`).join('')}
+      ${net}
+      <rect x="320" y="262" width="160" height="10" rx="5" fill="var(--line)"/>
+      <rect id="prog" x="320" y="262" width="160" height="10" rx="5" fill="var(--accent)" style="transform-box:fill-box;transform-origin:left center;transform:scaleX(0)"/>
+      <text x="400" y="312" text-anchor="middle" class="t-s">사진과 정답 사이의 규칙을 찾음</text>
+      <text x="665" y="312" text-anchor="middle" class="t-s">새 사진의 답을 고름</text>
+      <text id="done" x="400" y="340" text-anchor="middle" class="t-b ok" opacity="0">모델 완성</text>
+      <g class="mv" id="nc" opacity="0">${card(150, 360, cappedPen(0, 0, -10, .55), '', 56, 46)}<text x="190" y="365" class="t-s">새 사진 (이름표 없음)</text></g>
+      <g id="bars" opacity="0">
+        <text x="580" y="210" class="t-m">펜</text><rect x="630" y="198" width="120" height="16" rx="4" fill="var(--line)"/><rect class="b" x="630" y="198" width="110" height="16" rx="4" fill="var(--c0)"/><text x="750" y="234" text-anchor="end" class="t-s mono">92%</text>
+        <text x="580" y="256" class="t-m">지우개</text><rect x="630" y="244" width="120" height="16" rx="4" fill="var(--line)"/><rect class="b" x="630" y="244" width="6" height="16" rx="3" fill="var(--c2)"/><text x="750" y="280" text-anchor="end" class="t-s mono">5%</text>
+      </g>
+      <text id="ex" x="770" y="340" text-anchor="end" class="t-s" opacity="0">예시 값</text>
+    `, '데이터 모으기, 학습, 예측의 세 단계');
+    cards.forEach((c, k) => at(200 + k * 200, () => pop(q('#c' + k))));
+    cards.forEach((c, k) => at(1900 + k * 120, () => {
+      const el = q('#c' + k);
+      anim(el, [{ transform: 'translate(0px,0px) scale(1)', opacity: 1 }, { transform: `translate(${400 - c[0]}px,${190 - c[1]}px) scale(.4)`, opacity: 0 }], { d: 800 });
+    }));
+    at(2600, () => { anim(q('#netL'), [{ opacity: .25 }, { opacity: 1 }, { opacity: .25 }], { d: 700, it: 3 }); anim(q('#prog'), [{ transform: 'scaleX(0)' }, { transform: 'scaleX(1)' }], { d: 2100, e: 'linear' }); });
+    at(4800, () => { pop(q('#done')); anim(q('#netL'), [{ opacity: .25 }, { opacity: .8 }], { d: 400 }); });
+    at(5500, () => fadeIn(q('#nc')));
+    at(6300, () => moveBy(q('#nc'), 460, -230, { d: 900 }));
+    at(7400, () => { fadeIn(q('#bars')); qa('#bars .b').forEach(b => anim(b, [{ transform: 'scaleX(0)' }, { transform: 'scaleX(1)' }], { d: 700 })); fadeIn(q('#ex')); });
+    qa('#bars .b').forEach(b => { b.style.transformBox = 'fill-box'; b.style.transformOrigin = 'left center'; });
+  },
+},
+{
+  title: '신경망 안을 들여다보기',
+  caption: '신경망은 사진의 숫자를 받아 여러 층에 걸쳐 계산합니다. 앞쪽 층은 선·모서리 같은 단순한 무늬를, 뒤쪽 층은 사물의 부분 같은 복잡한 모양을 찾고, 마지막에 사물마다 점수를 냅니다.',
+  terms: [['신경망', '숫자를 받아 여러 층에 걸쳐 계산하는 구조. 층과 층은 선(연결)으로 이어지고, 연결마다 강도를 나타내는 숫자가 있습니다.'], ['특징', '사물을 구분하는 데 쓰이는 무늬나 모양.']],
+  link: "실습 ③ 학습: '사진 특징 뽑는 중'이 이 과정입니다.",
+  build() {
+    const T = (x, y, inner, id) => `<g id="${id}" opacity="0" class="mv"><rect x="${x - 25}" y="${y - 25}" width="50" height="50" rx="6" fill="var(--paper)" stroke="var(--line)" stroke-width="1.2"/><g transform="translate(${x},${y})">${inner}</g></g>`;
+    const st = 'stroke="var(--fg)" stroke-width="3" fill="none" stroke-linecap="round"';
+    const L1 = [[95, `<line x1="-15" y1="0" x2="15" y2="0" ${st}/>`], [165, `<line x1="0" y1="-15" x2="0" y2="15" ${st}/>`], [235, `<line x1="-13" y1="13" x2="13" y2="-13" ${st}/>`], [305, `<path d="M-14 8 Q0 -16 14 8" ${st}/>`]];
+    const L2 = [[130, `<circle r="12" ${st}/>`], [200, `<path d="M-12 -12 V12 H12" ${st}/>`], [270, `<rect x="-17" y="-6" width="34" height="12" rx="3" ${st}/>`]];
+    const L3 = [[130, `<polygon points="-10,-8 14,0 -10,8" fill="var(--tip)" stroke="var(--fg)" stroke-width="1.5"/><rect x="-18" y="-8" width="8" height="16" fill="var(--c0)"/>`, 1], [200, `<rect x="-18" y="-7" width="36" height="14" rx="3" fill="var(--c0)"/><rect x="-18" y="-9" width="10" height="18" rx="3" fill="var(--fg)" opacity=".75"/>`, 1], [270, `<rect x="-16" y="-10" width="32" height="20" rx="4" fill="var(--paper)" stroke="var(--fg)" stroke-width="1.2"/><rect x="-5" y="-10.4" width="16" height="20.8" fill="var(--c2)"/>`, 0]];
+    const lines = (x1, ys1, x2, ys2, id) => `<g id="${id}" stroke="var(--line)" stroke-width="1.2">${ys1.map(a => ys2.map(b => `<line x1="${x1}" y1="${a}" x2="${x2}" y2="${b}"/>`).join('')).join('')}</g>`;
+    svg(`
+      <text x="70" y="40" text-anchor="middle" class="t-b">입력 사진</text><text x="70" y="60" text-anchor="middle" class="t-s">숫자 150,528개</text>
+      <text x="245" y="40" text-anchor="middle" class="t-b">앞쪽 층</text><text x="245" y="60" text-anchor="middle" class="t-s">선·모서리</text>
+      <text x="420" y="40" text-anchor="middle" class="t-b">중간 층</text><text x="420" y="60" text-anchor="middle" class="t-s">모양</text>
+      <text x="595" y="40" text-anchor="middle" class="t-b">뒤쪽 층</text><text x="595" y="60" text-anchor="middle" class="t-s">사물의 부분</text>
+      <text x="725" y="40" text-anchor="middle" class="t-b">점수</text>
+      ${lines(120, [200], 220, L1.map(t => t[0]), 'w1')}
+      ${lines(270, L1.map(t => t[0]), 395, L2.map(t => t[0]), 'w2')}
+      ${lines(445, L2.map(t => t[0]), 570, L3.map(t => t[0]), 'w3')}
+      ${lines(620, L3.map(t => t[0]), 668, [150, 200, 250], 'w4')}
+      <g id="inp" opacity="0" class="mv"><rect x="20" y="150" width="100" height="100" rx="8" fill="var(--paper)" stroke="var(--line)" stroke-width="1.2"/>${pen(70, 200, -25, 'var(--c0)', .85)}</g>
+      ${L1.map((t, k) => T(245, t[0], t[1], 'a' + k)).join('')}
+      ${L2.map((t, k) => T(420, t[0], t[1], 'b' + k)).join('')}
+      ${L3.map((t, k) => T(595, t[0], t[1], 'c' + k)).join('')}
+      <g id="out" opacity="0">
+        <text x="672" y="155" class="t-m">펜</text><rect class="b" x="732" y="142" width="56" height="16" rx="4" fill="var(--c0)"/>
+        <text x="672" y="205" class="t-m">지우개</text><rect class="b" x="732" y="192" width="7" height="16" rx="3" fill="var(--c2)"/>
+        <text x="672" y="255" class="t-m">없음</text><rect class="b" x="732" y="242" width="5" height="16" rx="2.5" fill="var(--c1)"/>
+      </g>
+      <text id="cn" x="400" y="352" text-anchor="middle" class="t-s strong ok" opacity="0">선 하나하나가 연결이고, 연결마다 강도(숫자)가 있습니다</text>
+      <text x="400" y="380" text-anchor="middle" class="t-s">층과 무늬는 이해를 돕기 위한 그림입니다. 실제 신경망은 층이 수십 개입니다.</text>
+    `, '신경망의 층이 단순한 무늬에서 복잡한 모양으로 특징을 찾는 과정');
+    qa('#out .b').forEach(b => { b.style.transformBox = 'fill-box'; b.style.transformOrigin = 'left center'; });
+    const light = id => anim(q('#' + id), [{ stroke: 'var(--line)' }, { stroke: 'var(--accent)' }], { d: 500 });
+    at(300, () => pop(q('#inp')));
+    at(1200, () => { light('w1'); L1.forEach((t, k) => pop(q('#a' + k), 300 + k * 120)); });
+    at(2700, () => { light('w2'); fadeIn(q('#cn')); L2.forEach((t, k) => pop(q('#b' + k), 300 + k * 120)); });
+    at(4200, () => { light('w3'); L3.forEach((t, k) => { pop(q('#c' + k), 300 + k * 120); if (t[2]) anim(q('#c' + k + ' rect'), [{ stroke: 'var(--line)' }, { stroke: 'var(--accent)' }], { d: 400, delay: 900 }); }); });
+    at(5800, () => { light('w4'); fadeIn(q('#out')); qa('#out .b').forEach(b => anim(b, [{ transform: 'scaleX(0)' }, { transform: 'scaleX(1)' }], { d: 700, delay: 200 })); });
+  },
+},
+{
+  title: '학습은 틀린 만큼 고치는 것',
+  caption: 'AI는 예측하고, 정답과 비교하고, 틀린 만큼 연결 강도를 고치는 과정을 반복하며 배웁니다. 반복할수록 오차가 줄어듭니다.',
+  terms: [['오차', '예측이 정답과 얼마나 다른지를 나타낸 숫자. 작을수록 잘 맞힌 것입니다.'], ['에폭', '가지고 있는 사진 전체로 이 과정을 한 번 마치는 것. 에폭 20은 20번 반복한다는 뜻입니다.']],
+  link: '실습 ③ 학습: 학습 중 오차·정확도 그래프로 직접 확인합니다.',
+  build() {
+    const cx = 220, cy = 210, r = 150;
+    const errs = [1.10, 0.78, 0.54, 0.38, 0.27, 0.20], probs = [35, 52, 66, 77, 85, 90];
+    const gx = i => 500 + i * 52, gy = v => 300 - v / 1.2 * 165;
+    const pos = [[cx, cy - r, 90, '예측'], [cx + r, cy, 120, '정답과 비교'], [cx, cy + r, 100, '오차 계산'], [cx - r, cy, 140, '연결 강도 고치기']];
+    svg(`${arrowDefs}
+      <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="var(--line)" stroke-width="2" stroke-dasharray="5 6"/>
+      <g id="dotG" style="transform-box:view-box;transform-origin:${cx}px ${cy}px"><circle cx="${cx}" cy="${cy - r}" r="9" fill="var(--accent)"/></g>
+      ${pos.map(([x, y, w, t], k) => `<g><rect id="nd${k}" x="${x - w / 2}" y="${y - 18}" width="${w}" height="36" rx="8" fill="var(--surface)" stroke="var(--fg)" stroke-width="1.3"/><text x="${x}" y="${y + 5}" text-anchor="middle" class="t-m strong">${t}</text></g>`).join('')}
+      <text id="ep" x="${cx}" y="${cy - 8}" text-anchor="middle" class="t-h">에폭 1</text>
+      <text x="${cx}" y="${cy + 18}" text-anchor="middle" class="t-s">펜일 확률</text>
+      <text id="pv" x="${cx}" y="${cy + 42}" text-anchor="middle" class="t-b ok mono">-</text>
+      <rect x="455" y="14" width="330" height="80" rx="10" fill="var(--accent-soft)"/>
+      <text id="n1" x="472" y="47" class="t-m strong"></text>
+      <text id="n2" x="472" y="74" class="t-m"></text>
+      <text x="470" y="122" class="t-b">오차</text>
+      <line x1="480" y1="130" x2="480" y2="300" stroke="var(--muted)"/><line x1="480" y1="300" x2="785" y2="300" stroke="var(--muted)"/>
+      ${[0, 0.4, 0.8, 1.2].map(v => `<line x1="480" y1="${gy(v)}" x2="785" y2="${gy(v)}" stroke="var(--line)"/><text x="472" y="${gy(v) + 4}" text-anchor="end" class="t-s mono">${v.toFixed(1)}</text>`).join('')}
+      ${errs.map((v, i) => `<text x="${gx(i)}" y="318" text-anchor="middle" class="t-s mono">${i + 1}</text>`).join('')}
+      <text x="785" y="340" text-anchor="end" class="t-s">에폭 (예시 값)</text>
+      <polyline id="pl" fill="none" stroke="var(--c1)" stroke-width="2.5" points=""/>
+      ${errs.map((v, i) => `<circle id="pt${i}" cx="${gx(i)}" cy="${gy(v)}" r="5" fill="var(--c1)" opacity="0"/>`).join('')}
+    `, '예측, 비교, 오차 계산, 수정을 반복하며 오차가 줄어드는 학습 과정');
+    const say = (a, b) => { q('#n1').textContent = a; q('#n2').textContent = b; fadeIn(q('#n1'), 300); fadeIn(q('#n2'), 300); };
+    const mark = k => pos.forEach((_, j) => { const el = q('#nd' + j); el.setAttribute('stroke', j === k ? 'var(--accent)' : 'var(--fg)'); el.setAttribute('stroke-width', j === k ? '3' : '1.3'); });
+    const turn = (a, b, d = 600) => anim(q('#dotG'), [{ transform: `rotate(${a}deg)` }, { transform: `rotate(${b}deg)` }], { d });
+    const addPoint = i => { q('#pl').setAttribute('points', errs.slice(0, i + 1).map((e, k) => `${gx(k)},${gy(e)}`).join(' ')); pop(q('#pt' + i)); };
+    // 첫 바퀴는 단계마다 멈춰서 설명한다
+    at(300, () => { mark(0); q('#pv').textContent = probs[0] + '%'; say('① 예측: 펜 사진을 보고', "'펜일 확률 35%'라고 답합니다."); });
+    at(2600, () => { turn(0, 90); mark(1); say('② 정답과 비교: 정답은 펜(100%)', '35%는 정답과 차이가 큽니다.'); });
+    at(4900, () => { turn(90, 180); mark(2); say('③ 오차 계산: 차이를 숫자로 나타냅니다.', '지금 오차는 1.1입니다.'); addPoint(0); });
+    at(7200, () => { turn(180, 270); mark(3); say('④ 연결 강도 고치기: 펜을 더 잘 맞히도록', '장면 4의 연결 강도를 조금씩 바꿉니다.'); });
+    at(9500, () => { turn(270, 360); mark(0); say('사진 전체로 이 네 단계를 마치면 에폭 1번.', '이제 같은 과정을 빠르게 반복합니다.'); });
+    const lap = 1300, start = 10700;
+    at(start, () => { mark(-1); anim(q('#dotG'), [{ transform: 'rotate(0deg)' }, { transform: 'rotate(360deg)' }], { d: lap, it: errs.length - 1, e: 'linear' }); });
+    errs.slice(1).forEach((v, j) => at(start + lap * (j + 1), () => {
+      const i = j + 1;
+      q('#ep').textContent = `에폭 ${i + 1}`; q('#pv').textContent = probs[i] + '%'; addPoint(i);
+    }));
+    at(start + lap * (errs.length - 1) + 300, () => say('반복할수록 오차는 줄고', '펜일 확률은 올라갑니다.'));
+  },
+},
+{
+  title: '미리 배운 AI 빌려 쓰기',
+  caption: "장면 4에서 본 '사진을 보는 층'은 미리 학습된 AI(MobileNet)에서 그대로 빌려 쓰고, 마지막 '구분하는 부분'만 우리 사진으로 새로 학습합니다.",
+  terms: [['전이학습', '미리 학습된 모델의 일부를 가져와 새 문제에 쓰는 방법. 적은 사진으로도 빨리 학습할 수 있습니다.']],
+  link: '실습 ③ 학습: 학습이 수십 초 만에 끝나는 이유입니다.',
+  build() {
+    const front = Array.from({ length: 8 }, (_, k) => `<rect class="fs" x="${50 + k * 40}" y="${120 + k * 4}" width="30" height="${170 - k * 8}" rx="5" fill="var(--c2)" opacity=".85"/>`).join('');
+    const back = [0, 1].map(k => `<rect class="bs" x="${470 + k * 42}" y="150" width="30" height="110" rx="5" fill="var(--accent)"/>`).join('');
+    const rain = Array.from({ length: 16 }, (_, k) => `<rect class="rn" x="${60 + (k * 37) % 300}" y="${-30 - (k % 4) * 30}" width="22" height="18" rx="3" fill="var(--paper)" stroke="var(--muted)" opacity="0"/>`).join('');
+    svg(`${arrowDefs}
+      <text x="50" y="80" class="t-b">미리 학습된 부분 (MobileNet)</text>
+      <text x="470" y="80" class="t-b">새로 학습하는 부분</text>
+      ${rain}${front}
+      <line x1="372" y1="205" x2="462" y2="205" stroke="var(--muted)" stroke-width="2" marker-end="url(#ah)"/>
+      ${back}
+      <g id="lk" opacity="0" class="mv">${lock(205, 205)}</g>
+      <text id="f1" x="50" y="325" class="t-m" opacity="0">사진 약 120만 장(사물 1,000종류)으로 '보는 법'을 미리 배워 둠</text>
+      <text id="f2" x="50" y="350" class="t-m strong" opacity="0">이 부분은 고정: 다시 학습하지 않음</text>
+      <g class="mv" id="u0" opacity="0">${card(690, 130, pen(0, 0, -15, 'var(--c0)', .5), '펜', 56, 40)}</g>
+      <g class="mv" id="u1" opacity="0">${card(690, 210, eraser(0, 0, 10, .55), '지우개', 56, 40)}</g>
+      <g class="mv" id="u2" opacity="0">${card(690, 290, '', '없음', 56, 40)}</g>
+      <text id="g0" x="660" y="80" class="t-s" opacity="0">우리가 찍은 사진</text>
+      <text id="b1" x="470" y="300" class="t-m strong ok" opacity="0">구분하는 방법만 학습</text>
+      <text id="fin" x="400" y="388" text-anchor="middle" class="t-b" opacity="0">그래서 노트북에서도 수십 초면 학습이 끝납니다</text>
+    `, '미리 학습된 모델의 앞부분은 고정하고 끝부분만 새로 학습하는 전이학습');
+    qa('.rn').forEach((el, k) => at(200 + k * 90, () => anim(el, [{ opacity: 0, transform: 'translateY(0px)' }, { opacity: 1, transform: 'translateY(140px)', offset: .7 }, { opacity: 0, transform: 'translateY(200px)' }], { d: 1100 })));
+    at(600, () => fadeIn(q('#f1')));
+    at(2700, () => { anim(q('#lk'), [{ opacity: 0, transform: 'translateY(-60px)' }, { opacity: 1, transform: 'translateY(0px)' }], { d: 600, e: 'cubic-bezier(.3,1.4,.5,1)' }); qa('.fs').forEach(el => anim(el, [{ fill: 'var(--c2)' }, { fill: 'var(--muted)' }], { d: 600, delay: 400 })); fadeIn(q('#f2'), 450, 500); });
+    at(4300, () => { fadeIn(q('#g0')); [0, 1, 2].forEach(k => pop(q('#u' + k), k * 150)); });
+    at(5300, () => [0, 1, 2].forEach(k => anim(q('#u' + k), [{ transform: 'translate(0px,0px) scale(1)', opacity: 1 }, { transform: `translate(${505 - 690}px,${205 - [130, 210, 290][k]}px) scale(.3)`, opacity: 0 }], { d: 800, delay: k * 150 })));
+    at(6200, () => { qa('.bs').forEach(el => anim(el, [{ opacity: 1 }, { opacity: .35 }, { opacity: 1 }], { d: 500, it: 2 })); fadeIn(q('#b1')); });
+    at(7400, () => fadeIn(q('#fin')));
+  },
+},
+{
+  title: '예측은 확률이다',
+  caption: 'AI는 답을 확실히 아는 것이 아니라, 가능성이 가장 높은 답을 고릅니다. 헷갈리는 사진이면 확률이 여러 답으로 나뉩니다.',
+  terms: [['확률', '답일 가능성을 0~100%로 나타낸 값. 모든 답의 확률을 더하면 100%입니다.'], ['객체 탐지', '사진 속 사물마다 위치를 상자로 찾고 이름을 붙이는 방법.']],
+  link: '실습 ④ 예측: 막대의 %가 이 확률입니다.',
+  build() {
+    const names = ['펜', '지우개', '아무것도 없음'], cols = ['var(--c0)', 'var(--c2)', 'var(--c1)'], ys = [150, 210, 270];
+    svg(`
+      <rect x="60" y="100" width="220" height="200" rx="12" fill="var(--paper)" stroke="var(--line)" stroke-width="1.5"/>
+      <g id="o1">${pen(170, 200, -20, 'var(--c0)', 1.5)}</g>
+      <g id="o2" opacity="0">${sharp(170, 200, -20, 1.5)}</g>
+      <text id="olab" x="170" y="330" text-anchor="middle" class="t-m">펜 사진</text>
+      ${names.map((n, k) => `<text x="330" y="${ys[k] + 5}" class="t-m">${n}</text><rect x="460" y="${ys[k] - 12}" width="250" height="24" rx="6" fill="var(--line)"/><rect id="bar${k}" x="460" y="${ys[k] - 12}" width="250" height="24" rx="6" fill="${cols[k]}" style="transform-box:fill-box;transform-origin:left center;transform:scaleX(0)"/><text id="pct${k}" x="770" y="${ys[k] + 6}" text-anchor="end" class="t-b mono">0%</text>`).join('')}
+      <text id="note" x="330" y="335" class="t-m strong" opacity="0">샤프는 펜과 비슷해서 확률이 나뉩니다</text>
+      <text id="sum" x="330" y="362" class="t-s" opacity="0">세 막대를 더하면 항상 100%입니다</text>
+      <text x="770" y="370" text-anchor="end" class="t-s">예시 값</text>
+      <g id="det" opacity="0">
+        <rect x="0" y="0" width="800" height="400" fill="var(--surface)"/>
+        <text x="40" y="44" class="t-h">더 알아보기: 위치까지 찾는 객체 탐지</text>
+        <rect x="40" y="70" width="420" height="290" rx="10" fill="#d8c3a0"/>
+        ${pen(170, 160, -15, '#1f5fbf', 1.3)}${eraser(350, 280, 12, 1.4)}
+        <rect id="bx1" x="100" y="120" width="140" height="80" fill="none" stroke="var(--c0)" stroke-width="3" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100"/>
+        <rect id="bx2" x="300" y="245" width="100" height="70" fill="none" stroke="var(--c2)" stroke-width="3" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100"/>
+        <g id="tg1" opacity="0"><rect x="100" y="98" width="72" height="22" fill="var(--c0)"/><text x="108" y="114" class="t-tag">펜 94%</text></g>
+        <g id="tg2" opacity="0"><rect x="300" y="223" width="88" height="22" fill="var(--c2)"/><text x="308" y="239" class="t-tag">지우개 91%</text></g>
+        <text x="490" y="110" class="t-m">오늘 만든 AI: 화면 전체를 보고</text><text x="490" y="132" class="t-m">"이 사진은 펜" 하나만 답합니다.</text>
+        <text x="490" y="182" class="t-m strong">객체 탐지: 사물마다 위치를</text><text x="490" y="204" class="t-m strong">상자로 찾고 이름을 붙입니다.</text>
+        <text x="490" y="254" class="t-m">자율주행차가 차·사람·신호등을</text><text x="490" y="276" class="t-m">찾을 때 이런 방식을 씁니다.</text>
+      </g>
+    `, '예측 결과를 확률로 보여 주고, 객체 탐지를 소개');
+    let cur = [0, 0, 0];
+    const setBars = vals => vals.forEach((v, k) => {
+      anim(q('#bar' + k), [{ transform: `scaleX(${cur[k] / 100})` }, { transform: `scaleX(${v / 100})` }], { d: 800 });
+      at(400, () => { q('#pct' + k).textContent = v + '%'; });
+      cur[k] = v;
+    });
+    at(500, () => setBars([88, 7, 5])); at(1600, () => fadeIn(q('#sum')));
+    at(3200, () => { fadeOut(q('#o1')); fadeIn(q('#o2')); q('#olab').textContent = '샤프 사진'; });
+    at(3800, () => { setBars([58, 10, 32]); fadeIn(q('#note'), 450, 600); });
+    at(7200, () => fadeIn(q('#det'), 600));
+    at(8000, () => { anim(q('#bx1'), [{ strokeDashoffset: 100 }, { strokeDashoffset: 0 }], { d: 700 }); fadeIn(q('#tg1'), 300, 700); });
+    at(8800, () => { anim(q('#bx2'), [{ strokeDashoffset: 100 }, { strokeDashoffset: 0 }], { d: 700 }); fadeIn(q('#tg2'), 300, 700); });
+  },
+},
+];
+
+/* ---------- 진행 ---------- */
+let idx = -1; // -1: 안내 카드
+const dots = $('dots');
+dots.innerHTML = scenes.map((s, k) => `<button type="button" class="dot" aria-label="장면 ${k + 1}: ${s.title}" data-k="${k}"></button>`).join('');
+dots.addEventListener('click', e => { const b = e.target.closest('.dot'); if (b) go(+b.dataset.k); });
+function openTheory() { go(idx < 0 ? -1 : idx); }
+function go(k) {
+  stopAll();
+  idx = Math.max(-1, Math.min(scenes.length, k));
+  const intro = idx === -1, sum = idx === scenes.length;
+  $('thIntro').hidden = !intro; $('thSummary').hidden = !sum; $('thPlayer').hidden = intro || sum;
+  if (sum) app.theoryDone = true;
+  if (intro || sum) return;
+  const s = scenes[idx];
+  $('thNo').textContent = `장면 ${idx + 1} / ${scenes.length}`;
+  $('thTitle').textContent = s.title;
+  $('thCaption').textContent = s.caption;
+  $('thLink').textContent = s.link;
+  const tm = $('thTerm'); tm.innerHTML = '<span class="k">새 용어</span>';
+  (s.terms || []).forEach(([a, b]) => { const p = document.createElement('p'); const strong = document.createElement('b'); strong.textContent = a; p.append(strong, ' ' + b); tm.append(p); });
+  tm.hidden = !(s.terms || []).length;
+  Array.from(dots.children).forEach((d, j) => d.setAttribute('aria-current', j === idx ? 'step' : 'false'));
+  $('thPrev').disabled = false;
+  $('thNext').textContent = idx === scenes.length - 1 ? '정리 보기 →' : '다음 →';
+  s.build();
+}
+$('thStart').addEventListener('click', () => go(0));
+$('thPrev').addEventListener('click', () => go(idx - 1));
+$('thNext').addEventListener('click', () => go(idx + 1));
+$('thReplay').addEventListener('click', () => go(idx));
+$('thToLab').addEventListener('click', () => showView('lab'));
+$('sumBack').addEventListener('click', () => go(scenes.length - 1));
+document.addEventListener('keydown', e => {
+  if ($('view-theory').hidden || idx < 0 || e.target.closest('input,select,textarea')) return;
+  if (e.key === 'ArrowRight' && idx < scenes.length) go(idx + 1);
+  if (e.key === 'ArrowLeft') go(idx - 1);
+});
+window.__theory = { go, scenes };
+})();
+</script>
+</body>
+</html>
